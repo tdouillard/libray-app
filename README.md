@@ -190,3 +190,15 @@ See CONTRIBUTING.md for guidelines.
 ## License
 
 MIT
+
+## GitHub Pages Deployment
+
+The frontend can be deployed to GitHub Pages via GitHub Actions.
+
+- Workflow file: `.github/workflows/deploy-pages.yml`
+- Trigger: push to `dev` branch (or manual `workflow_dispatch`)
+- Published output: `frontend/dist`
+
+After enabling **Settings > Pages > Source: GitHub Actions**, the site URL will be:
+
+`https://tdouillard.github.io/libray-app/`

@@ -16,6 +16,7 @@
     "forceConsistentCasingInFileNames": true,
     "moduleResolution": "node",
     "allowImportingTsExtensions": true,
+    "types": ["vite/client", "vitest/globals"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
