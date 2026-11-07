@@ -32,7 +32,8 @@ export function LoginPage() {
 
         {!isSupabaseConfigured && (
           <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-            Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_KEY (see frontend/.env.example).
+            Supabase is not configured. Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY in the root .env (see
+            .env.example), or as repository variables for the GitHub Pages build.
           </p>
         )}
 
