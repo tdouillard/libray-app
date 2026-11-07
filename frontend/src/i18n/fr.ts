@@ -15,6 +15,7 @@ const fr: Dictionary = {
   "menu.settings": "⚙️ Paramètres",
   "menu.signOut": "⎋ Se déconnecter",
   "language.label": "🌐 Langue",
+  "theme.dark": "🌙 Mode sombre",
   "language.saveError": "Impossible d’enregistrer votre langue : {message}",
 
   "login.title": "Connexion",

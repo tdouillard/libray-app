@@ -46,9 +46,8 @@ This document outlines the major technology choices for the libray-app project a
 - Fallbacks: photo upload and manual ISBN entry
 
 **Book metadata lookup** (`frontend/src/services/bookLookup.ts`, all CORS-enabled, queried in parallel and merged)
-- Google Books (optional `VITE_GOOGLE_BOOKS_API_KEY` to avoid anonymous rate limits)
 - Open Library
-- BnF SRU catalogue: authoritative for French BD / manga that the other two often lack
+- BnF SRU catalogue: authoritative for French BD / manga that Open Library often lacks
 
 ---
 
@@ -108,7 +107,7 @@ This document outlines the major technology choices for the libray-app project a
 - Good coverage of ISBN/book data
 - No authentication required
 - No rate-limiting concerns for moderate use
-- Fallback to Google Books API if needed
+- BnF SRU catalogue as a second source
 
 **Authentication**: JWT (if needed)
 - Open standard

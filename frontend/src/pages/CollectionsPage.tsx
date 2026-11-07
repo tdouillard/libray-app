@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { BookCover } from "../components/BookCover";
 import { CollectionCard } from "../components/CollectionCard";
 import { useLibraryData } from "../hooks/useLibraryData";
 import type { Collection } from "../types";
@@ -145,7 +146,9 @@ export function CollectionsPage() {
           <div className="mt-5 space-y-4">
             {books.slice(0, 4).map((book) => (
               <div key={book.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                <img src={book.cover} alt={book.title} className="h-16 w-12 rounded-xl object-cover" />
+                <div className="h-16 w-12 shrink-0 overflow-hidden rounded-xl">
+                  <BookCover book={book} variant="compact" />
+                </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-slate-900">{book.title}</p>
                   <p className="text-xs text-slate-500">{book.author}</p>

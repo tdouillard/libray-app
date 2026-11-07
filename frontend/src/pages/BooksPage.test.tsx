@@ -8,6 +8,7 @@ const detectMock = vi.fn();
 vi.mock("../hooks/useLibraryData", () => ({
   useLibraryData: () => ({
     books: [],
+    collections: [],
     isLoading: false,
     addBook: vi.fn(),
     updateBook: vi.fn(),

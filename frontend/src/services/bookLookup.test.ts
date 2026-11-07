@@ -1,4 +1,4 @@
-import { buildBookFormFromMetadata, cleanBnfCreator, lookupBookByIsbn } from "./bookLookup";
+import { buildBookFormFromMetadata, cleanBnfCreator, lookupBookByIsbn, lookupBookReport } from "./bookLookup";
 
 const BNF_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <srw:searchRetrieveResponse xmlns:srw="http://www.loc.gov/zing/srw/">
@@ -13,16 +13,13 @@ const BNF_XML = `<?xml version="1.0" encoding="UTF-8"?>
 </srw:recordData></srw:record></srw:records>
 </srw:searchRetrieveResponse>`;
 
-function mockProviders(handlers: { google?: unknown; openLibrary?: unknown; bnf?: string; failGoogle?: boolean }) {
+function mockProviders(handlers: { openLibrary?: unknown; bnf?: string; failOpenLibrary?: boolean }) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
-    if (url.includes("googleapis.com")) {
-      return handlers.failGoogle
-        ? new Response("quota", { status: 429 })
-        : new Response(JSON.stringify(handlers.google ?? {}), { status: 200 });
-    }
     if (url.includes("openlibrary.org")) {
-      return new Response(JSON.stringify(handlers.openLibrary ?? {}), { status: 200 });
+      return handlers.failOpenLibrary
+        ? new Response("quota", { status: 429 })
+        : new Response(JSON.stringify(handlers.openLibrary ?? {}), { status: 200 });
     }
     if (url.includes("catalogue.bnf.fr")) {
       return new Response(handlers.bnf ?? "<r/>", { status: 200 });
@@ -54,8 +51,8 @@ describe("lookupBookByIsbn", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("falls back to the BnF when Google Books is rate limited and Open Library is empty", async () => {
-    mockProviders({ failGoogle: true, openLibrary: {}, bnf: BNF_XML });
+  it("falls back to the BnF when Open Library is rate limited", async () => {
+    mockProviders({ failOpenLibrary: true, bnf: BNF_XML });
 
     const result = await lookupBookByIsbn("978-2-344-05948-7");
 
@@ -69,43 +66,75 @@ describe("lookupBookByIsbn", () => {
     });
   });
 
-  it("merges providers, preferring Google Books and filling gaps from the others", async () => {
+  it("merges providers, preferring Open Library and filling gaps from the BnF", async () => {
     const fetchMock = mockProviders({
-      google: {
-        items: [
-          {
-            volumeInfo: {
-              title: "Goetz",
-              authors: ["Fane", "Didier Cassegrain"],
-              description: "Un futur proche...",
-              publishedDate: "2026-04-29",
-              imageLinks: { thumbnail: "http://books.google.com/cover?id=1&zoom=1&edge=curl" },
-            },
-          },
-        ],
+      openLibrary: {
+        "ISBN:9782344059487": {
+          title: "Goetz (OL)",
+          authors: [{ name: "Fane" }, { name: "Didier Cassegrain" }],
+          cover: { large: "http://covers.openlibrary.org/b/id/1-L.jpg" },
+        },
       },
-      openLibrary: { "ISBN:9782344059487": { title: "Goetz (OL)", publishers: [{ name: "Glénat" }] } },
       bnf: BNF_XML,
     });
 
     const result = await lookupBookByIsbn("9782344059487");
 
     expect(result).toMatchObject({
-      title: "Goetz",
+      title: "Goetz (OL)",
       author: "Fane, Didier Cassegrain",
-      description: "Un futur proche...",
       year: 2026,
       publisher: "Glénat",
-      cover: "https://books.google.com/cover?id=1&zoom=2",
-      sources: ["Google Books", "Open Library", "BnF"],
+      cover: "https://covers.openlibrary.org/b/id/1-L.jpg",
+      sources: ["Open Library", "BnF"],
     });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(String(fetchMock.mock.calls[0][0])).toContain("isbn:9782344059487");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("returns null when no provider knows the book", async () => {
     mockProviders({ openLibrary: {}, bnf: "<r/>" });
     expect(await lookupBookByIsbn("9782344059487")).toBeNull();
+  });
+});
+
+describe("lookupBookReport", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "Image",
+      class {
+        onerror: (() => void) | null = null;
+        set src(_value: string) {
+          queueMicrotask(() => this.onerror?.());
+        }
+      }
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("reports found / not found / error per source, including the cover probe", async () => {
+    mockProviders({ failOpenLibrary: true, bnf: BNF_XML });
+
+    const { result, trace } = await lookupBookReport("9782344059487");
+
+    expect(result?.title).toBe("Goetz");
+    expect(trace).toEqual([
+      { name: "Open Library", status: "error" },
+      { name: "BnF", status: "found" },
+      { name: "Epagine covers", status: "not-found" },
+      { name: "Open Library covers", status: "not-found" },
+    ]);
+  });
+
+  it("still reports the sources queried when nothing is found", async () => {
+    mockProviders({ openLibrary: {}, bnf: "<r/>" });
+
+    const { result, trace } = await lookupBookReport("9782344059487");
+
+    expect(result).toBeNull();
+    expect(trace).toEqual([
+      { name: "Open Library", status: "not-found" },
+      { name: "BnF", status: "not-found" },
+    ]);
   });
 });
 

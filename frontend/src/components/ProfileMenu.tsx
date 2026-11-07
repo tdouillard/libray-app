@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useChangeLanguage } from "../auth/useLanguage";
 import { isLanguage } from "../i18n";
 import { useI18n } from "../i18n/I18nContext";
+import { useTheme } from "../theme";
 import { Avatar } from "./Avatar";
 
 /* Avatar button with a dropdown: who is signed in, language, settings and sign out (same menu as expense-split). */
@@ -11,6 +12,7 @@ export function ProfileMenu() {
   const { user, displayName, signOut } = useAuth();
   const { lang, languages, t } = useI18n();
   const changeLanguage = useChangeLanguage();
+  const { theme, toggle: toggleTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const root = useRef<HTMLDivElement>(null);
@@ -80,6 +82,22 @@ export function ProfileMenu() {
             </select>
           </label>
           {error && <p role="alert" className="px-3 pb-2 text-xs text-red-600">{error}</p>}
+
+          <div className="mx-1 flex items-center justify-between gap-3 rounded-xl px-2 py-2 text-sm text-slate-700">
+            <span id="theme-label">{t("theme.dark")}</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={theme === "dark"}
+              aria-labelledby="theme-label"
+              onClick={toggleTheme}
+              className={`relative h-6 w-11 rounded-full transition-colors ${theme === "dark" ? "bg-indigo-600" : "bg-slate-300"}`}
+            >
+              <span
+                className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${theme === "dark" ? "translate-x-5" : ""}`}
+              />
+            </button>
+          </div>
 
           <Link
             role="menuitem"

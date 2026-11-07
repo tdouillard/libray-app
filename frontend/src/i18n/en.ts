@@ -15,6 +15,7 @@ const en = {
   "menu.settings": "⚙️ Settings",
   "menu.signOut": "⎋ Sign out",
   "language.label": "🌐 Language",
+  "theme.dark": "🌙 Dark mode",
   "language.saveError": "Could not save your language: {message}",
 
   "login.title": "Sign in",

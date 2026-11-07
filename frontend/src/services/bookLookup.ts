@@ -1,10 +1,10 @@
-import type { Book } from "../types";
+import type { Book, BookKind } from "../types";
+import { epagineCoverUrl, openLibraryCoverUrl, probeCover } from "./covers";
 import { normalizeIsbn } from "./isbn";
 
 /**
- * Looks a book up from its ISBN using several open, CORS-enabled catalogues in parallel and
+ * Looks a book up from its ISBN using open, CORS-enabled catalogues in parallel and
  * merges the answers:
- *  - Google Books      : best covers/descriptions, good coverage of recent releases
  *  - Open Library      : open data, good for international titles
  *  - BnF (SRU, DC)     : French national library, authoritative for French BD / manga
  *
@@ -22,12 +22,12 @@ export interface LookupResult {
   sources?: string[];
 }
 
-type ProviderResult = Omit<LookupResult, "sources"> | null;
+/** `url` points at the record that was found, so the UI can link to it. */
+type ProviderResult = (Omit<LookupResult, "sources"> & { url?: string }) | null;
 type Provider = { name: string; run: (isbn: string, signal: AbortSignal) => Promise<ProviderResult> };
 
 const PROVIDER_TIMEOUT_MS = 8000;
 const COVER_TIMEOUT_MS = 4000;
-const GOOGLE_BOOKS_API_KEY = import.meta.env?.VITE_GOOGLE_BOOKS_API_KEY as string | undefined;
 
 function parseYear(value: unknown): number | undefined {
   if (typeof value !== "string" && typeof value !== "number") {
@@ -44,54 +44,10 @@ function toHttps(url: string | undefined): string | undefined {
 async function fetchJson<T>(url: string, signal: AbortSignal): Promise<T | null> {
   const response = await fetch(url, { signal });
   if (!response.ok) {
-    return null;
+    throw new Error(`HTTP ${response.status}`);
   }
   return (await response.json()) as T;
 }
-
-/* ------------------------------------------------------------------ Google Books */
-
-interface GoogleBooksResponse {
-  items?: Array<{
-    volumeInfo?: {
-      title?: string;
-      subtitle?: string;
-      authors?: string[];
-      publisher?: string;
-      publishedDate?: string;
-      description?: string;
-      categories?: string[];
-      imageLinks?: { thumbnail?: string; smallThumbnail?: string };
-    };
-  }>;
-}
-
-const googleBooksProvider: Provider = {
-  name: "Google Books",
-  async run(isbn, signal) {
-    const key = GOOGLE_BOOKS_API_KEY ? `&key=${encodeURIComponent(GOOGLE_BOOKS_API_KEY)}` : "";
-    const data = await fetchJson<GoogleBooksResponse>(
-      `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&maxResults=1${key}`,
-      signal
-    );
-    const info = data?.items?.[0]?.volumeInfo;
-    if (!info?.title) {
-      return null;
-    }
-
-    const thumbnail = info.imageLinks?.thumbnail ?? info.imageLinks?.smallThumbnail;
-
-    return {
-      title: info.subtitle ? `${info.title} - ${info.subtitle}` : info.title,
-      author: info.authors?.join(", "),
-      description: info.description,
-      year: parseYear(info.publishedDate),
-      publisher: info.publisher,
-      cover: toHttps(thumbnail)?.replace("&edge=curl", "").replace("zoom=1", "zoom=2"),
-      tags: info.categories?.slice(0, 4),
-    };
-  },
-};
 
 /* ------------------------------------------------------------------ Open Library */
 
@@ -103,6 +59,7 @@ interface OpenLibraryBook {
   publish_date?: string;
   cover?: { large?: string; medium?: string };
   subjects?: Array<{ name?: string }>;
+  url?: string;
 }
 
 const openLibraryProvider: Provider = {
@@ -125,7 +82,8 @@ const openLibraryProvider: Provider = {
         .join(", "),
       year: parseYear(book.publish_date),
       publisher: book.publishers?.[0]?.name,
-      cover: book.cover?.large ?? book.cover?.medium,
+      cover: toHttps(book.cover?.large ?? book.cover?.medium),
+      url: toHttps(book.url) ?? `https://openlibrary.org/isbn/${isbn}`,
       tags: book.subjects
         ?.map((subject) => subject.name)
         .filter((name): name is string => Boolean(name))
@@ -152,6 +110,7 @@ function parseBnfRecord(xml: string): ProviderResult {
       .filter(Boolean);
 
   const title = values("title")[0];
+  const permalink = values("identifier").find((id) => /^https?:\/\/catalogue\.bnf\.fr\/ark:/.test(id));
   if (!title) {
     return null;
   }
@@ -169,6 +128,7 @@ function parseBnfRecord(xml: string): ProviderResult {
     year: parseYear(values("date")[0]),
     publisher,
     tags: collection ? [collection] : undefined,
+    url: permalink ? toHttps(permalink) : undefined,
   };
 }
 
@@ -181,40 +141,78 @@ const bnfProvider: Provider = {
       { signal }
     );
     if (!response.ok) {
-      return null;
+      throw new Error(`HTTP ${response.status}`);
     }
     return parseBnfRecord(await response.text());
   },
 };
 
-/* ------------------------------------------------------------------ cover fallback */
+/* ------------------------------------------------------------------ AniList (manga enrichment) */
 
-/** Open Library covers by ISBN. Resolves to the URL only when an actual cover exists. */
-function probeOpenLibraryCover(isbn: string): Promise<string | undefined> {
-  if (typeof Image === "undefined") {
-    return Promise.resolve(undefined);
+/** "One Piece - Tome 12" / "Berserk, Vol. 3" -> "One Piece" / "Berserk" */
+export function stripVolume(title: string): string {
+  return title
+    .replace(/[\s,:\-–]*\b(tome|vol(?:ume)?\.?|band|#)\s*\d+.*$/i, "")
+    .replace(/[\s,:\-–]+\d+\s*$/, "")
+    .trim();
+}
+
+interface AniListResponse {
+  data?: { Media?: { description?: string | null; genres?: string[]; startDate?: { year?: number | null }; siteUrl?: string | null } | null };
+}
+
+/**
+ * AniList is searched by title (it has no ISBN index) and describes the whole series, so it is only
+ * used to fill a missing description/tags for manga. It never provides the cover (that would be the
+ * series cover, not the volume's).
+ */
+async function enrichFromAniList(title: string, signal: AbortSignal): Promise<ProviderResult> {
+  const search = stripVolume(title);
+  if (!search) {
+    return null;
   }
 
-  const url = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false`;
-
-  return new Promise((resolve) => {
-    const image = new Image();
-    const timer = window.setTimeout(() => resolve(undefined), COVER_TIMEOUT_MS);
-    image.onload = () => {
-      window.clearTimeout(timer);
-      resolve(url);
-    };
-    image.onerror = () => {
-      window.clearTimeout(timer);
-      resolve(undefined);
-    };
-    image.src = url;
+  const response = await fetch("https://graphql.anilist.co", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      query:
+        "query($search:String){Media(search:$search,type:MANGA){description(asHtml:false) genres startDate{year} siteUrl}}",
+      variables: { search },
+    }),
+    signal,
   });
+  if (!response.ok) {
+    if (response.status === 404) {
+      return null; // AniList answers 404 when nothing matches
+    }
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const media = ((await response.json()) as AniListResponse).data?.Media;
+  if (!media) {
+    return null;
+  }
+
+  const description = media.description
+    ?.replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .trim();
+
+  return { description: description || undefined, tags: media.genres?.slice(0, 4), url: media.siteUrl ?? undefined };
 }
+
+/* ------------------------------------------------------------------ cover fallback */
+
+/** Cover sources tried in order when no catalogue returned one. */
+const COVER_SOURCES: Array<{ name: string; url: (isbn: string) => string | null }> = [
+  { name: "Epagine covers", url: epagineCoverUrl },
+  { name: "Open Library covers", url: openLibraryCoverUrl },
+];
 
 /* ------------------------------------------------------------------ merge + public API */
 
-const providers: Provider[] = [googleBooksProvider, openLibraryProvider, bnfProvider];
+const providers: Provider[] = [openLibraryProvider, bnfProvider];
 
 function mergeResults(results: Array<{ name: string; value: ProviderResult }>): LookupResult | null {
   const found = results.filter((entry): entry is { name: string; value: NonNullable<ProviderResult> } =>
@@ -239,10 +237,26 @@ function mergeResults(results: Array<{ name: string; value: ProviderResult }>): 
   };
 }
 
-export async function lookupBookByIsbn(rawIsbn: string): Promise<LookupResult | null> {
+/** What happened when one source was queried. "error" = network failure, timeout or HTTP error. */
+export type ProviderStatus = "found" | "not-found" | "error";
+export interface ProviderTrace {
+  name: string;
+  status: ProviderStatus;
+  /** Link to the record or image that was found (only when status is "found"). */
+  url?: string;
+}
+
+export interface LookupReport {
+  result: LookupResult | null;
+  /** Every source that was actually queried, in order. */
+  trace: ProviderTrace[];
+}
+
+/** Like `lookupBookByIsbn`, but also reports which sources were queried and what each one answered. */
+export async function lookupBookReport(rawIsbn: string, options: { kind?: BookKind } = {}): Promise<LookupReport> {
   const isbn = normalizeIsbn(rawIsbn);
   if (!isbn) {
-    return null;
+    return { result: null, trace: [] };
   }
 
   const controller = new AbortController();
@@ -252,27 +266,106 @@ export async function lookupBookByIsbn(rawIsbn: string): Promise<LookupResult | 
     const settled = await Promise.all(
       providers.map(async (provider) => {
         try {
-          return { name: provider.name, value: await provider.run(isbn, controller.signal) };
+          const value = await provider.run(isbn, controller.signal);
+          return { name: provider.name, value, status: (value ? "found" : "not-found") as ProviderStatus };
         } catch (error) {
           console.info(`${provider.name} lookup failed`, error);
-          return { name: provider.name, value: null };
+          return { name: provider.name, value: null, status: "error" as ProviderStatus };
         }
       })
     );
 
+    const trace: ProviderTrace[] = settled.map(({ name, status, value }) => ({
+      name,
+      status,
+      url: status === "found" ? value?.url : undefined,
+    }));
     const merged = mergeResults(settled);
     if (!merged) {
-      return null;
+      return { result: null, trace };
     }
 
-    if (!merged.cover) {
-      merged.cover = await probeOpenLibraryCover(isbn);
+    if (options.kind === "Manga" && merged.title && (!merged.description || !merged.tags?.length)) {
+      try {
+        const extra = await enrichFromAniList(merged.title, controller.signal);
+        const useful = Boolean(extra && (extra.description || extra.tags?.length));
+        if (extra && useful) {
+          merged.description ||= extra.description;
+          if (!merged.tags?.length) merged.tags = extra.tags;
+          merged.sources = [...(merged.sources ?? []), "AniList"];
+        }
+        trace.push({ name: "AniList", status: useful ? "found" : "not-found", url: useful ? extra?.url : undefined });
+      } catch (error) {
+        console.info("AniList lookup failed", error);
+        trace.push({ name: "AniList", status: "error" });
+      }
     }
 
-    return merged;
+    for (const source of COVER_SOURCES) {
+      if (merged.cover) break;
+      const candidate = source.url(isbn);
+      merged.cover = candidate ? await probeCover(candidate, COVER_TIMEOUT_MS) : undefined;
+      trace.push({ name: source.name, status: merged.cover ? "found" : "not-found", url: merged.cover });
+    }
+
+    return { result: merged, trace };
   } finally {
     window.clearTimeout(timer);
   }
+}
+
+export async function lookupBookByIsbn(
+  rawIsbn: string,
+  options: { kind?: BookKind } = {}
+): Promise<LookupResult | null> {
+  return (await lookupBookReport(rawIsbn, options)).result;
+}
+
+const PLACEHOLDER_DESCRIPTION = "A newly added title to your library.";
+
+/** "updated" = at least one field changed; "unchanged" = catalogues answered but nothing differed. */
+export type RefreshOutcome = "updated" | "unchanged" | "not-found" | "no-isbn" | "error";
+
+export interface RefreshResult {
+  outcome: Exclude<RefreshOutcome, "error">;
+  trace: ProviderTrace[];
+  /** Present when `outcome` is "updated" or "unchanged" (candidate fields, before diffing). */
+  updates?: Partial<Book>;
+}
+
+/**
+ * Re-queries the catalogues for an existing book and returns the fields to save.
+ * Catalogue data replaces title/author/year/cover; description and tags are only replaced when the
+ * book still has the default placeholder, so anything the user wrote is preserved.
+ */
+export async function refreshBookMetadata(
+  book: Pick<Book, "isbn" | "description" | "tags" | "kind">
+): Promise<RefreshResult> {
+  const isbn = normalizeIsbn(book.isbn);
+  if (!isbn) {
+    return { outcome: "no-isbn", trace: [] };
+  }
+
+  const { result: metadata, trace } = await lookupBookReport(isbn, { kind: book.kind });
+  if (!metadata) {
+    return { outcome: "not-found", trace };
+  }
+
+  const updates: Partial<Book> = {};
+  if (metadata.title) updates.title = metadata.title;
+  if (metadata.author) updates.author = metadata.author;
+  if (metadata.year) updates.year = metadata.year;
+  if (metadata.cover) updates.cover = metadata.cover;
+
+  if (metadata.description && (!book.description || book.description === PLACEHOLDER_DESCRIPTION)) {
+    updates.description = metadata.description;
+  }
+  const hasOnlyDefaultTags = book.tags.length === 0 || (book.tags.length === 1 && book.tags[0] === "New");
+  if (metadata.tags && metadata.tags.length > 0 && hasOnlyDefaultTags) {
+    updates.tags = metadata.tags;
+  }
+
+  return { outcome: "updated", trace, updates };
 }
 
 export function buildBookFormFromMetadata(

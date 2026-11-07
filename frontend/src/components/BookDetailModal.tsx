@@ -1,114 +1,374 @@
-import type { Book, BookStatus } from "../types";
+import { useEffect, useRef, useState } from "react";
+import { STATUS_META, STATUS_ORDER } from "../bookStatus";
+import type { RefreshOutcome } from "../services/bookLookup";
+import type { RefreshOneResult } from "../hooks/useMetadataRefresh";
+import type { Book, BookStatus, Collection } from "../types";
+import { BookCover, resolveCoverUrl } from "./BookCover";
 
 interface BookDetailModalProps {
   book: Book | null;
+  collections?: Collection[];
   onClose: () => void;
   onStatusChange?: (bookId: string, status: BookStatus) => void;
+  onRatingChange?: (bookId: string, rating: number) => void;
   onDelete?: (bookId: string) => void;
+  /** Step through the currently visible books without closing the dialog. */
+  onNavigate?: (direction: -1 | 1) => void;
+  /** Re-fetches title, cover, etc. from the online catalogues. */
+  onRefreshMetadata?: (book: Book) => Promise<RefreshOneResult>;
 }
 
-const statusOptions: BookStatus[] = ["owned", "reading", "borrowed", "wishlist"];
+const PROVIDER_STATUS_LABEL = { found: "✓ found", "not-found": "✗ not found", error: "⚠ error" } as const;
 
-export function BookDetailModal({
+const REFRESH_MESSAGES: Record<RefreshOutcome, string> = {
+  updated: "Metadata updated",
+  unchanged: "Already up to date",
+  "not-found": "Nothing found for this ISBN",
+  "no-isbn": "No valid ISBN on this book",
+  error: "Refresh failed, try again",
+};
+
+const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+export function BookDetailModal(props: BookDetailModalProps) {
+  // Re-key on the book so transient state (delete confirmation, copied flag) resets per book.
+  return props.book ? <DetailDialog key={props.book.id} {...props} book={props.book} /> : null;
+}
+
+function DetailDialog({
   book,
+  collections = [],
   onClose,
   onStatusChange,
+  onRatingChange,
   onDelete,
-}: BookDetailModalProps) {
-  if (!book) {
-    return null;
-  }
+  onNavigate,
+  onRefreshMetadata,
+}: BookDetailModalProps & { book: Book }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshResult, setRefreshResult] = useState<RefreshOneResult | null>(null);
+
+  const refreshMetadata = async () => {
+    if (!onRefreshMetadata || refreshing) return;
+    setRefreshing(true);
+    setRefreshResult(null);
+    try {
+      setRefreshResult(await onRefreshMetadata(book));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const coverUrl = resolveCoverUrl(book);
+  const bookCollections = collections.filter((collection) => book.collectionIds.includes(collection.id));
+
+  // Lock page scroll and restore focus to whatever opened the dialog.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialogRef.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus?.();
+    };
+  }, []);
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      onClose();
+      return;
+    }
+
+    if (event.key === "Tab") {
+      const items = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
+        (element) => !element.hasAttribute("disabled")
+      );
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+      return;
+    }
+
+    const target = event.target as HTMLElement;
+    const typing = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
+    if (!typing && onNavigate && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      onNavigate(event.key === "ArrowLeft" ? -1 : 1);
+    }
+  };
+
+  const copyIsbn = async () => {
+    try {
+      await navigator.clipboard.writeText(book.isbn);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard can be unavailable (insecure context); the ISBN stays selectable.
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
-      <div className="w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Book details
-            </p>
-            <h3 className="mt-1 text-2xl font-bold text-slate-900">{book.title}</h3>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-          >
-            Close
-          </button>
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 sm:items-center sm:p-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="book-detail-title"
+        onKeyDown={handleKeyDown}
+        className="relative flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
+      >
+        {/* Blurred cover as a soft header background */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-40 scale-125 overflow-hidden bg-slate-100 opacity-50 blur-2xl"
+        >
+          {coverUrl && <img src={coverUrl} alt="" className="h-full w-full object-cover" onError={(e) => e.currentTarget.remove()} />}
         </div>
 
-        <div className="grid gap-6 p-6 md:grid-cols-[220px_1fr]">
-          <img src={book.cover} alt={book.title} className="h-72 w-full rounded-2xl object-cover md:h-full" />
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/80 text-slate-600 shadow hover:bg-white"
+        >
+          ✕
+        </button>
 
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-indigo-700">
-                {book.status}
-              </span>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-                {book.rating.toFixed(1)}★
-              </span>
+        <div className="relative grid gap-6 overflow-y-auto p-6 sm:grid-cols-[200px_1fr] sm:p-8">
+          <div>
+            <div className="mx-auto aspect-[2/3] w-full max-w-[200px] overflow-hidden rounded-xl shadow-xl ring-1 ring-black/10 sm:mx-0">
+              <BookCover book={book} />
             </div>
+            {book.isbn && (
+              <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
+                <span>ISBN</span>
+                <span className="select-all font-mono text-slate-700">{book.isbn}</span>
+                <button
+                  type="button"
+                  onClick={() => void copyIsbn()}
+                  className="rounded-md border border-slate-200 px-1.5 py-0.5 hover:bg-slate-50"
+                >
+                  {copied ? "copied" : "copy"}
+                </button>
+              </div>
+            )}
+          </div>
 
+          <div className="min-w-0 space-y-5">
             <div>
-              <p className="text-sm text-slate-500">by {book.author}</p>
-              <p className="mt-2 text-base leading-7 text-slate-700">{book.description}</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
+                {book.kind} · {book.year}
+              </p>
+              <h2 id="book-detail-title" className="mt-1 text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
+                {book.title}
+              </h2>
+              <p className="mt-1 text-slate-600">{book.author}</p>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                Update status
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {statusOptions.map((status) => (
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center text-xl" role="group" aria-label="Rating">
+                {[1, 2, 3, 4, 5].map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => onRatingChange?.(book.id, value)}
+                    aria-label={`${value} star${value > 1 ? "s" : ""}`}
+                    className={`transition hover:scale-110 ${book.rating >= value - 0.25 ? "text-amber-400" : "text-slate-300"}`}
+                  >
+                    ★
+                  </button>
+                ))}
+                <span className="ml-2 text-sm text-slate-500">{book.rating.toFixed(1)}</span>
+              </div>
+
+              <div className="flex rounded-full bg-slate-100 p-0.5 text-xs font-semibold" role="group" aria-label="Status">
+                {STATUS_ORDER.map((status) => (
                   <button
                     key={status}
                     type="button"
+                    aria-pressed={book.status === status}
                     onClick={() => onStatusChange?.(book.id, status)}
-                    className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] transition ${
-                      book.status === status
-                        ? "bg-slate-900 text-white"
-                        : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                    className={`rounded-full px-3 py-1.5 transition ${
+                      book.status === status ? "bg-white text-slate-900 shadow" : "text-slate-500 hover:text-slate-800"
                     }`}
                   >
-                    {status}
+                    {STATUS_META[status].label}
                   </button>
                 ))}
               </div>
             </div>
 
-            <dl className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl bg-slate-50 p-3">
-                <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Year</dt>
-                <dd className="mt-1 text-base font-semibold text-slate-900">{book.year}</dd>
-              </div>
-              <div className="rounded-2xl bg-slate-50 p-3">
-                <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">ISBN</dt>
-                <dd className="mt-1 text-base font-semibold text-slate-900">{book.isbn}</dd>
-              </div>
-            </dl>
+            {book.description && (
+              <p className="max-h-40 overflow-y-auto pr-1 text-[15px] leading-7 text-slate-700">{book.description}</p>
+            )}
 
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Tags</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {book.tags.map((tag) => (
-                  <span key={tag} className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-slate-600">
-                    {tag}
-                  </span>
+            {book.tags.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Tags</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {book.tags.map((tag) => (
+                    <span key={tag} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {bookCollections.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Collections</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {bookCollections.map((collection) => (
+                    <span key={collection.id} className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
+                      {collection.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {refreshResult && (
+          <div role="status" className="relative border-t border-slate-200 bg-slate-50 px-6 py-3 text-sm sm:px-8">
+            <p className="font-semibold text-slate-800">{REFRESH_MESSAGES[refreshResult.outcome]}</p>
+            {refreshResult.trace.length > 0 && (
+              <ul className="mt-2 space-y-1" aria-label="Sources queried">
+                {refreshResult.trace.map((entry) => (
+                  <li key={entry.name} className="flex items-center justify-between gap-4">
+                    {entry.status === "found" && entry.url ? (
+                      <a
+                        href={entry.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-indigo-600 underline decoration-indigo-300 underline-offset-2 hover:text-indigo-500"
+                      >
+                        {entry.name} ↗
+                      </a>
+                    ) : (
+                      <span className="text-slate-600">{entry.name}</span>
+                    )}
+                    <span
+                      className={`font-medium ${
+                        entry.status === "found"
+                          ? "text-emerald-700"
+                          : entry.status === "error"
+                            ? "text-red-700"
+                            : "text-slate-500"
+                      }`}
+                    >
+                      {PROVIDER_STATUS_LABEL[entry.status]}
+                    </span>
+                  </li>
                 ))}
-              </div>
-            </div>
+              </ul>
+            )}
+          </div>
+        )}
 
-            <div className="flex justify-end border-t border-slate-200 pt-3">
-              <button
-                type="button"
-                onClick={() => onDelete?.(book.id)}
-                className="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100"
-              >
-                Remove book
-              </button>
-            </div>
+        <div className="relative flex items-center justify-between border-t border-slate-200 bg-white/90 px-6 py-3 sm:px-8">
+          <div className="flex items-center gap-2">
+            {confirmingDelete ? (
+              <>
+                <span className="text-sm text-red-700">Remove this book?</span>
+                <button
+                  type="button"
+                  onClick={() => onDelete?.(book.id)}
+                  className="rounded-full bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-500"
+                >
+                  Yes, remove
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                  className="rounded-full border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(true)}
+                  className="rounded-full px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+                >
+                  Remove
+                </button>
+                {onRefreshMetadata && (
+                  <button
+                    type="button"
+                    onClick={() => void refreshMetadata()}
+                    disabled={refreshing}
+                    aria-busy={refreshing}
+                    className="flex items-center gap-2 whitespace-nowrap rounded-full border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-70"
+                  >
+                    <svg
+                      className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path d="M21 12a9 9 0 1 1-3-6.7" />
+                      <path d="M21 4v5h-5" />
+                    </svg>
+                    {refreshing ? "Refreshing…" : "Refresh metadata"}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {onNavigate && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onNavigate(-1)}
+                  aria-label="Previous book"
+                  className="rounded-full border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50"
+                >
+                  ←
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onNavigate(1)}
+                  aria-label="Next book"
+                  className="rounded-full border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50"
+                >
+                  →
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              data-autofocus
+              onClick={onClose}
+              className="rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+            >
+              Done
+            </button>
           </div>
         </div>
       </div>

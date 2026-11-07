@@ -5,8 +5,6 @@ import type { Book, BookKind } from "../types";
 
 const STORAGE_KEY = "libray.scanBatch";
 const MAX_LOOKUPS_IN_FLIGHT = 3;
-const FALLBACK_COVER =
-  "https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=800&q=80";
 
 export type ScanStatus = "loading" | "found" | "notFound";
 
@@ -59,7 +57,7 @@ export function toBooks(items: ScannedBook[]): Book[] {
     status: "owned",
     description: item.description || "",
     tags: item.tags && item.tags.length > 0 ? item.tags : ["New"],
-    cover: item.cover || FALLBACK_COVER,
+    cover: item.cover || "",
     rating: 0,
     collectionIds: [],
   }));
@@ -107,7 +105,7 @@ export function useScanBatch(libraryIsbns: string[]) {
       if (!entry) continue; // removed while waiting
 
       inFlightRef.current += 1;
-      lookupBookByIsbn(entry.isbn)
+      lookupBookByIsbn(entry.isbn, { kind: entry.kind })
         .catch(() => null)
         .then((meta) => {
           const still = [...stateRef.current.main, ...stateRef.current.rescan].some((b) => b.id === id);

@@ -1,72 +1,61 @@
+import { STATUS_META } from "../bookStatus";
 import type { Book } from "../types";
-
-const statusStyles = {
-  owned: "bg-emerald-100 text-emerald-700",
-  reading: "bg-sky-100 text-sky-700",
-  borrowed: "bg-amber-100 text-amber-700",
-  wishlist: "bg-violet-100 text-violet-700",
-};
+import { BookCover } from "./BookCover";
 
 interface BookCardProps {
   book: Book;
   onSelectBook?: (book: Book) => void;
+  /** When true, the card shows a checkbox and `onSelectBook` is used to toggle it. */
+  selectionMode?: boolean;
+  selected?: boolean;
 }
 
-export function BookCard({ book, onSelectBook }: BookCardProps) {
+export function BookCard({ book, onSelectBook, selectionMode = false, selected = false }: BookCardProps) {
+  const status = STATUS_META[book.status];
+
   return (
-    <article className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-md">
-      <div className="flex h-full flex-col">
-        <div className="relative h-44 overflow-hidden">
-          <img
-            src={book.cover}
-            alt={book.title}
-            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-          />
-          <div className="absolute inset-x-0 top-0 flex items-center justify-between p-3">
-            <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${statusStyles[book.status]}`}>
-              {book.status}
-            </span>
-            <span className="rounded-full bg-slate-950/70 px-2 py-1 text-xs font-medium text-white">
-              {book.rating.toFixed(1)}★
-            </span>
-          </div>
-        </div>
-
-        <div className="flex flex-1 flex-col gap-3 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">{book.title}</h3>
-              <p className="text-sm text-slate-600">{book.author}</p>
-            </div>
-            <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-              {book.year}
-            </span>
-          </div>
-
-          <p className="line-clamp-3 text-sm leading-6 text-slate-600">{book.description}</p>
-
-          <div className="flex flex-wrap gap-2">
-            {book.tags.slice(0, 3).map((tag) => (
-              <span key={tag} className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-slate-600">
-                {tag}
-              </span>
-            ))}
-          </div>
-
-          <div className="mt-auto flex items-center justify-between border-t border-slate-200 pt-3">
-            <span className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
-              ISBN {book.isbn}
-            </span>
-            <button
-              type="button"
-              onClick={() => onSelectBook?.(book)}
-              className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-700"
-            >
-              View details
-            </button>
-          </div>
-        </div>
+    <button
+      type="button"
+      onClick={() => onSelectBook?.(book)}
+      aria-label={`${book.title} by ${book.author}`}
+      aria-pressed={selectionMode ? selected : undefined}
+      className="group flex h-full w-full flex-col items-stretch justify-start text-left focus:outline-none"
+    >
+      <div
+        className={`relative aspect-[2/3] origin-bottom overflow-hidden rounded-l-sm rounded-r-xl shadow-md transition duration-200 group-hover:-translate-y-1 group-hover:-rotate-[0.4deg] group-hover:shadow-xl group-focus-visible:ring-4 group-focus-visible:ring-indigo-300 ${
+          selected ? "ring-4 ring-indigo-500" : "ring-1 ring-black/5"
+        }`}
+      >
+        <BookCover book={book} />
+        {/* Hardcover spine: a bright hinge line, then a soft shadow falling onto the cover. */}
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 left-0 w-3 bg-gradient-to-r from-black/30 via-black/5 to-transparent"
+        />
+        <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-[3px] w-px bg-white/30" />
+        {selectionMode && (
+          <span
+            aria-hidden="true"
+            className={`absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-sm font-bold ring-2 ring-white ${
+              selected ? "bg-indigo-600 text-white" : "bg-white/80 text-transparent"
+            }`}
+          >
+            ✓
+          </span>
+        )}
+        <span className="absolute bottom-2 right-2 rounded-full bg-slate-950/70 px-2 py-0.5 text-[11px] font-medium text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+          ★ {book.rating.toFixed(1)}
+        </span>
       </div>
-    </article>
+      {/* Fixed two-line title block so every author line starts at the same height. */}
+      <p className="mt-2 line-clamp-2 text-sm font-semibold leading-snug text-slate-900">{book.title}</p>
+      <p className="truncate text-xs text-slate-500">{book.author}</p>
+      {/* Status bar: a short tick that grows to full width on hover. */}
+      <span
+        title={status.label}
+        className={`mt-2 block h-[3px]  w-7 rounded-full transition-all duration-200 group-hover:w-full group-focus-visible:w-full ${status.dot}`}
+      />
+      <span className="sr-only">{status.label}</span>
+    </button>
   );
 }

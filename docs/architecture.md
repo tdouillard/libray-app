@@ -70,7 +70,7 @@ External APIs and services are isolated:
 
 - **MetadataProvider Interface**
   - OpenLibraryProvider (default)
-  - GoogleBooksProvider (fallback)
+  - BnFProvider (French BD / manga)
   - Custom providers can be added
 
 - **RetailerImporter Interface**
