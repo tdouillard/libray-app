@@ -8,7 +8,7 @@ const auth = {
   saveProfile: vi.fn(),
   requestEmailCode: vi.fn(),
   changeEmail: vi.fn(),
-  changePassword: vi.fn(),
+  sendResetLink: vi.fn(),
   signOutOthers: vi.fn(),
   uploadAvatar: vi.fn(),
   removeAvatar: vi.fn(),
@@ -21,7 +21,7 @@ vi.mock("../auth/AuthContext", () => ({ useAuth: () => auth }));
 beforeEach(() => {
   for (const v of Object.values(auth)) if (typeof v === "function") (v as ReturnType<typeof vi.fn>).mockReset();
   auth.avatarUrl.mockResolvedValue("");
-  for (const k of ["saveProfile", "requestEmailCode", "changeEmail", "changePassword", "signOutOthers", "deleteAccount"] as const) {
+  for (const k of ["saveProfile", "requestEmailCode", "changeEmail", "sendResetLink", "signOutOthers", "deleteAccount"] as const) {
     auth[k].mockResolvedValue(undefined);
   }
 });
@@ -58,20 +58,15 @@ describe("AccountPage", () => {
     await waitFor(() => expect(auth.changeEmail).toHaveBeenCalledWith("new@example.com", "123456"));
   });
 
-  it("validates the new password before asking for a code", async () => {
+  it("sends a password reset link and refuses to send another one right away", async () => {
     render(<AccountPage />);
-    const [pw, confirm] = [screen.getByLabelText("New password"), screen.getByLabelText("Confirm new password")];
+    fireEvent.click(screen.getByRole("button", { name: "Send reset link" }));
+    expect(await screen.findByText("Reset link sent. Check your inbox.")).not.toBeNull();
+    expect(auth.sendResetLink).toHaveBeenCalledTimes(1);
 
-    fireEvent.change(pw, { target: { value: "abc" } });
-    fireEvent.change(confirm, { target: { value: "abc" } });
-    fireEvent.click(screen.getAllByRole("button", { name: "Send code" })[1]);
-    expect(await screen.findByText(/6 characters minimum/)).not.toBeNull();
-
-    fireEvent.change(pw, { target: { value: "secret1" } });
-    fireEvent.change(confirm, { target: { value: "secret2" } });
-    fireEvent.click(screen.getAllByRole("button", { name: "Send code" })[1]);
-    expect(await screen.findByText("The two passwords do not match.")).not.toBeNull();
-    expect(auth.requestEmailCode).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Send reset link" }));
+    expect(await screen.findByText("Wait a minute before requesting another link.")).not.toBeNull();
+    expect(auth.sendResetLink).toHaveBeenCalledTimes(1);
   });
 
   it("only enables account deletion once the email is typed", async () => {

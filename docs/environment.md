@@ -16,6 +16,10 @@ email/password and the library tables live in that project's Postgres database.
 3. Create your account in the Supabase dashboard (Authentication > Users > Add user). The app only
    offers sign-in, no sign-up.
 
+4. Password reset and email-change links redirect back to the app. In Supabase, go to Authentication >
+   URL Configuration and add the app URLs to **Redirect URLs** (e.g. `https://<user>.github.io/libray-app/`
+   and `http://localhost:5173/`); links to a URL that is not listed fall back to the Site URL.
+
 The Express backend and local Docker Postgres described below are no longer used by the frontend.
 
 ## Backend

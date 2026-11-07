@@ -232,60 +232,33 @@ function EmailSetting() {
   );
 }
 
-function PasswordSetting() {
-  const { user, requestEmailCode, changePassword } = useAuth();
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [code, setCode] = useState("");
-  const [codeSent, setCodeSent] = useState(false);
-  const { state, run, setState } = useAction();
+const RESET_COOLDOWN_MS = 60_000;
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    if (!codeSent) {
-      if (password.length < 6) return setState({ ok: "", error: "Password too weak (6 characters minimum).", busy: false });
-      if (password !== confirm) return setState({ ok: "", error: "The two passwords do not match.", busy: false });
-      if (await run(requestEmailCode, `A code was sent to ${user?.email}. Enter it to confirm.`)) setCodeSent(true);
-      return;
+/* Same as expense-split: an emailed link leads back to the app on a "new password" screen. */
+function PasswordSetting() {
+  const { user, sendResetLink } = useAuth();
+  const { state, run, setState } = useAction();
+  const resetAt = useRef(0);
+
+  async function send() {
+    if (Date.now() < resetAt.current) {
+      return setState({ ok: "", error: "Wait a minute before requesting another link.", busy: false });
     }
-    if (!code.trim()) return setState({ ok: "", error: "Enter the code you received by email.", busy: false });
-    if (await run(() => changePassword(password, code.trim()), "Password changed.")) {
-      setPassword("");
-      setConfirm("");
-      setCode("");
-      setCodeSent(false);
-    }
+    if (await run(sendResetLink, "Reset link sent. Check your inbox.")) resetAt.current = Date.now() + RESET_COOLDOWN_MS;
   }
 
   return (
-    <Setting title="Password" hint="Changing it requires a code sent to your email address.">
-      <form onSubmit={submit} className="space-y-3">
-        <label className="block text-sm font-medium text-slate-700">
-          New password
-          <input type="password" autoComplete="new-password" required readOnly={codeSent} value={password} onChange={(e) => setPassword(e.target.value)} className={inputClass} />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Confirm new password
-          <input type="password" autoComplete="new-password" required readOnly={codeSent} value={confirm} onChange={(e) => setConfirm(e.target.value)} className={inputClass} />
-        </label>
-        {codeSent && (
-          <label className="block text-sm font-medium text-slate-700">
-            Verification code
-            <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={10} value={code} onChange={(e) => setCode(e.target.value)} className={inputClass} />
-          </label>
-        )}
-        <Feedback state={state} />
-        <div className="flex gap-2">
-          <button type="submit" className={primaryClass} disabled={state.busy}>
-            {codeSent ? "Change password" : "Send code"}
-          </button>
-          {codeSent && (
-            <button type="button" className={buttonClass} onClick={() => { setCodeSent(false); setCode(""); setState(idle()); }}>
-              Cancel
-            </button>
-          )}
-        </div>
-      </form>
+    <Setting
+      title="Password"
+      hint="We send a reset link to your email address. Your current password stays active until you use it."
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm text-slate-500">{user?.email}</span>
+        <button type="button" className={buttonClass} disabled={state.busy} onClick={() => void send()}>
+          Send reset link
+        </button>
+      </div>
+      <Feedback state={state} />
     </Setting>
   );
 }

@@ -5,6 +5,8 @@ import { avatarPath } from "../services/avatar";
 interface AuthValue {
   user: SupabaseUser | null;
   ready: boolean;
+  /* True while the user arrived from a password reset email and still has to choose a new password. */
+  recovering: boolean;
   displayName: string;
   initials: string;
   signIn: (email: string, password: string) => Promise<void>;
@@ -13,7 +15,11 @@ interface AuthValue {
   saveProfile: (username: string) => Promise<void>;
   requestEmailCode: () => Promise<void>;
   changeEmail: (email: string, code: string) => Promise<void>;
-  changePassword: (password: string, code: string) => Promise<void>;
+  /* Emails a link (valid for the signed-in address) that leads to the "new password" screen. */
+  sendResetLink: () => Promise<void>;
+  /* Sets the new password after a reset link and leaves the recovery screen. */
+  completeRecovery: (password: string) => Promise<void>;
+  skipRecovery: () => void;
   signOutOthers: () => Promise<void>;
   uploadAvatar: (blob: Blob) => Promise<void>;
   removeAvatar: () => Promise<void>;
@@ -29,14 +35,17 @@ const appUrl = () => location.origin + import.meta.env.BASE_URL;
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [ready, setReady] = useState(false);
+  const [recovering, setRecovering] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         // Session handed over by an email confirmation link (e.g. after an email change).
-        if (await supabase.consumeHashSession(location.hash)) {
+        const kind = await supabase.consumeHashSession(location.hash);
+        if (kind) {
           history.replaceState(null, "", location.pathname + location.search);
+          if (kind === "recovery" && !cancelled) setRecovering(true);
         }
       } catch {
         /* an invalid link just leaves the login form */
@@ -65,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await supabase.signOut();
+    setRecovering(false);
     setUser(null);
   }, []);
 
@@ -78,9 +88,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await supabase.updateUser({ email: email.trim(), nonce: code }, appUrl()));
   }, []);
 
-  const changePassword = useCallback(async (password: string, code: string) => {
-    setUser(await supabase.updateUser({ password, nonce: code }));
+  const sendResetLink = useCallback(async () => {
+    await supabase.resetPasswordForEmail(supabase.user!.email!, appUrl());
   }, []);
+
+  const completeRecovery = useCallback(async (password: string) => {
+    setUser(await supabase.updateUser({ password }));
+    setRecovering(false);
+  }, []);
+
+  const skipRecovery = useCallback(() => setRecovering(false), []);
 
   const signOutOthers = useCallback(() => supabase.signOutOthers(), []);
 
@@ -114,11 +131,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const parts = displayName.split(/[._\-+\s]+/).filter(Boolean);
     const initials = (parts.length > 1 ? parts[0][0] + parts[1][0] : displayName.slice(0, 2) || "?").toUpperCase();
     return {
-      user, ready, displayName, initials,
-      signIn, signOut, saveProfile, requestEmailCode, changeEmail, changePassword,
+      user, ready, recovering, displayName, initials,
+      signIn, signOut, saveProfile, requestEmailCode, changeEmail, sendResetLink, completeRecovery, skipRecovery,
       signOutOthers, uploadAvatar, removeAvatar, avatarUrl, deleteAccount,
     };
-  }, [user, ready, signIn, signOut, saveProfile, requestEmailCode, changeEmail, changePassword,
+  }, [user, ready, recovering, signIn, signOut, saveProfile, requestEmailCode, changeEmail, sendResetLink, completeRecovery, skipRecovery,
       signOutOthers, uploadAvatar, removeAvatar, avatarUrl, deleteAccount]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

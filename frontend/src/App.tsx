@@ -5,16 +5,18 @@ import { BatchScanPage } from "./pages/BatchScanPage";
 import { CollectionsPage } from "./pages/CollectionsPage";
 import { AccountPage } from "./pages/AccountPage";
 import { Avatar } from "./components/Avatar";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { LoginPage } from "./pages/LoginPage";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 
 const queryClient = new QueryClient();
 
 function AuthGate() {
-  const { user, ready, signOut } = useAuth();
+  const { user, ready, recovering, signOut } = useAuth();
 
   if (!ready) return null;
   if (!user) return <LoginPage />;
+  if (recovering) return <ResetPasswordPage />;
 
   return <Shell onSignOut={signOut} />;
 }

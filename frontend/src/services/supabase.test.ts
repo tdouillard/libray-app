@@ -86,8 +86,20 @@ describe("SupabaseClient", () => {
   it("consumes the session handed over in the URL hash", async () => {
     const { client } = setup(() => json(user));
     expect(await client.consumeHashSession("#foo=bar")).toBe(false);
-    expect(await client.consumeHashSession("#access_token=at2&refresh_token=rt2&expires_in=100")).toBe(true);
+    expect(await client.consumeHashSession("#access_token=at2&refresh_token=rt2&expires_in=100&type=signup")).toBe("session");
     expect(client.user?.id).toBe("u1");
+  });
+
+  it("recognises a password reset link", async () => {
+    const { client } = setup(() => json(user));
+    expect(await client.consumeHashSession("#access_token=at2&refresh_token=rt2&type=recovery")).toBe("recovery");
+  });
+
+  it("asks for a reset email with the redirect URL", async () => {
+    const { client, calls } = setup(() => new Response(null, { status: 200 }));
+    await client.resetPasswordForEmail("me@example.com", "https://app/");
+    expect(calls[0].url).toBe("https://x.supabase.co/auth/v1/recover");
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({ email: "me@example.com", redirect_to: "https://app/" });
   });
 
   it("forgets the session without calling the server", async () => {

@@ -180,8 +180,9 @@ export class SupabaseClient {
     await this.call("/auth/v1/logout?scope=others", { method: "POST", token: await this.accessToken() });
   }
 
-  /* Session handed over in the URL hash after an email confirmation link. Returns true when one was consumed. */
-  async consumeHashSession(hash: string): Promise<boolean> {
+  /* Session handed over in the URL hash after an email link. Returns the link type ("recovery" for a password
+     reset link, "session" for any other) or false when the hash holds no session. */
+  async consumeHashSession(hash: string): Promise<false | "recovery" | "session"> {
     const params = new URLSearchParams(String(hash || "").replace(/^#/, ""));
     const token = params.get("access_token");
     const refreshToken = params.get("refresh_token");
@@ -193,7 +194,7 @@ export class SupabaseClient {
       expires_in: Number(params.get("expires_in")) || 3600,
       user,
     });
-    return true;
+    return params.get("type") === "recovery" ? "recovery" : "session";
   }
 
   /* Updates the signed-in user (email, password, user_metadata). An email change only applies once the
@@ -206,7 +207,7 @@ export class SupabaseClient {
     return user;
   }
 
-  /* Emails a one-time code (nonce) that confirms a sensitive change such as an email or password update. */
+  /* Emails a one-time code (nonce) that confirms a sensitive change such as an email update. */
   async reauthenticate() {
     await this.call("/auth/v1/reauthenticate", { token: await this.accessToken() });
   }
