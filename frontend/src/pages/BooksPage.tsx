@@ -11,7 +11,7 @@ import type { Book, BookStatus } from "../types";
 const statusFilters = ["all", "owned", "reading", "borrowed", "wishlist"] as const;
 type StatusFilter = (typeof statusFilters)[number];
 
-const initialForm: Omit<Book, "id" | "cover" | "rating" | "collectionIds"> & { cover?: string } = {
+const initialForm: Omit<Book, "id" | "kind" | "cover" | "rating" | "collectionIds"> & { cover?: string } = {
   title: "",
   author: "",
   isbn: "",
@@ -107,6 +107,7 @@ export function BooksPage() {
 
     const newBook: Book = {
       id: crypto.randomUUID(),
+      kind: "Book",
       title: formValues.title,
       author: formValues.author,
       isbn: formValues.isbn,

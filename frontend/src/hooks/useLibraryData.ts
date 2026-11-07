@@ -26,6 +26,11 @@ export function useLibraryData() {
     setBooks((current) => [book, ...current]);
   }, []);
 
+  const addBooks = useCallback(async (newBooks: Book[]) => {
+    await libraryApi.createBooks(newBooks);
+    setBooks((current) => [...newBooks, ...current]);
+  }, []);
+
   const addCollection = useCallback(async (collection: Collection) => {
     await libraryApi.createCollection(collection);
     setCollections((current) => [collection, ...current]);
@@ -50,6 +55,7 @@ export function useLibraryData() {
     collections,
     isLoading,
     addBook,
+    addBooks,
     addCollection,
     updateBook,
     deleteBook,

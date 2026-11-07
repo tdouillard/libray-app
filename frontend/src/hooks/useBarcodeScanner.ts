@@ -5,6 +5,8 @@ import { normalizeIsbn } from "../services/isbn";
 
 const SCAN_INTERVAL_MS = 120;
 const HINT_AFTER_MS = 15000;
+/** Batch mode: a barcode still in view must not be reported again for this long. */
+const REPEAT_COOLDOWN_MS = 2500;
 
 /** Book barcodes are EAN-13 (ISBN-13). Some publishers also print ISBN-10 as Code128/Code39. */
 const BOOK_FORMATS = ["ean_13", "ean_8", "upc_a", "code_128", "code_39"] as const;
@@ -90,9 +92,11 @@ interface UseBarcodeScannerOptions {
   active: boolean;
   /** Called once with a validated ISBN-13 (digits only). */
   onIsbn: (isbn: string) => void;
+  /** Keep scanning after a hit (batch mode). The same code is ignored for REPEAT_COOLDOWN_MS. */
+  continuous?: boolean;
 }
 
-export function useBarcodeScanner({ videoRef, active, onIsbn }: UseBarcodeScannerOptions) {
+export function useBarcodeScanner({ videoRef, active, onIsbn, continuous = false }: UseBarcodeScannerOptions) {
   const [error, setError] = useState("");
   const [hint, setHint] = useState("");
   const [isStarting, setIsStarting] = useState(false);
@@ -103,6 +107,8 @@ export function useBarcodeScanner({ videoRef, active, onIsbn }: UseBarcodeScanne
   const streamRef = useRef<MediaStream | null>(null);
   const onIsbnRef = useRef(onIsbn);
   onIsbnRef.current = onIsbn;
+  const continuousRef = useRef(continuous);
+  continuousRef.current = continuous;
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -122,6 +128,7 @@ export function useBarcodeScanner({ videoRef, active, onIsbn }: UseBarcodeScanne
     let cancelled = false;
     let loopTimer: number | undefined;
     let hintTimer: number | undefined;
+    let lastHit: { isbn: string; at: number } | null = null;
 
     const run = async () => {
       if (!window.isSecureContext) {
@@ -188,9 +195,16 @@ export function useBarcodeScanner({ videoRef, active, onIsbn }: UseBarcodeScanne
             try {
               const isbn = firstIsbn(await detector.detect(video));
               if (isbn && !cancelled) {
-                cancelled = true;
-                onIsbnRef.current(isbn);
-                return;
+                if (!continuousRef.current) {
+                  cancelled = true;
+                  onIsbnRef.current(isbn);
+                  return;
+                }
+                const now = Date.now();
+                if (!lastHit || lastHit.isbn !== isbn || now - lastHit.at > REPEAT_COOLDOWN_MS) {
+                  onIsbnRef.current(isbn);
+                }
+                lastHit = { isbn, at: now };
               }
             } catch (detectError) {
               console.info("Barcode detection frame failed", detectError);

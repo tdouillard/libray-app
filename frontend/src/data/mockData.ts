@@ -13,6 +13,7 @@ export const books: Book[] = [
     cover: "https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=800&q=80",
     rating: 4.9,
     collectionIds: ["c1", "c2"],
+    kind: "Book",
   },
   {
     id: "b2",
@@ -26,6 +27,7 @@ export const books: Book[] = [
     cover: "https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=800&q=80",
     rating: 4.8,
     collectionIds: ["c1"],
+    kind: "Book",
   },
   {
     id: "b3",
@@ -39,6 +41,7 @@ export const books: Book[] = [
     cover: "https://images.unsplash.com/photo-1516979187457-637abb4f9353?auto=format&fit=crop&w=800&q=80",
     rating: 4.7,
     collectionIds: ["c3"],
+    kind: "Book",
   },
   {
     id: "b4",
@@ -52,6 +55,7 @@ export const books: Book[] = [
     cover: "https://images.unsplash.com/photo-1519682337058-a94d519337bc?auto=format&fit=crop&w=800&q=80",
     rating: 4.6,
     collectionIds: ["c4"],
+    kind: "Book",
   },
   {
     id: "b5",
@@ -65,6 +69,7 @@ export const books: Book[] = [
     cover: "https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=800&q=80",
     rating: 4.9,
     collectionIds: ["c3", "c5"],
+    kind: "Book",
   },
   {
     id: "b6",
@@ -78,6 +83,7 @@ export const books: Book[] = [
     cover: "https://images.unsplash.com/photo-1524578271613-d550eacf6090?auto=format&fit=crop&w=800&q=80",
     rating: 4.4,
     collectionIds: ["c2"],
+    kind: "Book",
   },
 ];
 

@@ -1,6 +1,7 @@
 import { BrowserRouter, NavLink, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BooksPage } from "./pages/BooksPage";
+import { BatchScanPage } from "./pages/BatchScanPage";
 import { CollectionsPage } from "./pages/CollectionsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
@@ -18,6 +19,7 @@ function AuthGate() {
 
 const navItems = [
   { to: "/", label: "Books" },
+  { to: "/scan", label: "Batch scan" },
   { to: "/collections", label: "Collections" },
 ];
 
@@ -80,6 +82,7 @@ function Shell({ email, onSignOut }: { email?: string; onSignOut: () => void }) 
           <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
             <Routes>
               <Route path="/" element={<BooksPage />} />
+              <Route path="/scan" element={<BatchScanPage />} />
               <Route path="/collections" element={<CollectionsPage />} />
             </Routes>
           </main>

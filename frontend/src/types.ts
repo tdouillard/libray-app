@@ -1,7 +1,11 @@
 export type BookStatus = "owned" | "wishlist" | "reading" | "borrowed";
 
+export type BookKind = "Book" | "BD" | "Manga";
+export const BOOK_KINDS: readonly BookKind[] = ["Book", "BD", "Manga"];
+
 export interface Book {
   id: string;
+  kind: BookKind;
   title: string;
   author: string;
   isbn: string;

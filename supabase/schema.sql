@@ -16,6 +16,10 @@ create table if not exists public.books (
   rating numeric not null default 0,
   created_at timestamptz not null default now()
 );
+-- Added after the first release: Book / BD / Manga. Idempotent for existing databases.
+alter table public.books add column if not exists kind text not null default 'Book';
+alter table public.books drop constraint if exists books_kind_check;
+alter table public.books add constraint books_kind_check check (kind in ('Book', 'BD', 'Manga'));
 create index if not exists books_user_idx on public.books (user_id);
 
 create table if not exists public.collections (

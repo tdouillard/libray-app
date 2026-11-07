@@ -1,8 +1,9 @@
 import { supabase } from "./supabase";
-import type { Book, BookStatus, Collection } from "../types";
+import type { Book, BookKind, BookStatus, Collection } from "../types";
 
 interface BookRow {
   id: string;
+  kind?: BookKind;
   isbn: string;
   title: string;
   author: string;
@@ -26,6 +27,7 @@ interface CollectionRow {
 
 const toBook = (r: BookRow): Book => ({
   id: r.id,
+  kind: r.kind ?? "Book",
   isbn: r.isbn,
   title: r.title,
   author: r.author,
@@ -49,6 +51,7 @@ const toCollection = (r: CollectionRow): Collection => ({
 
 const bookColumns = (b: Partial<Book>) => {
   const row: Record<string, unknown> = {
+    kind: b.kind,
     isbn: b.isbn,
     title: b.title,
     author: b.author,
@@ -83,6 +86,15 @@ export const libraryApi = {
         body: book.collectionIds.map((collection_id) => ({ collection_id, book_id: book.id })),
       });
     }
+  },
+
+  /** Inserts many books in a single request (all or nothing). */
+  async createBooks(books: Book[]): Promise<void> {
+    if (books.length === 0) return;
+    await supabase.rest("/books", {
+      method: "POST",
+      body: books.map((book) => ({ id: book.id, ...bookColumns(book) })),
+    });
   },
 
   async updateBook(id: string, updates: Partial<Book>): Promise<void> {
