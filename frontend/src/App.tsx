@@ -3,6 +3,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BooksPage } from "./pages/BooksPage";
 import { BatchScanPage } from "./pages/BatchScanPage";
 import { CollectionsPage } from "./pages/CollectionsPage";
+import { AccountPage } from "./pages/AccountPage";
+import { Avatar } from "./components/Avatar";
 import { LoginPage } from "./pages/LoginPage";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 
@@ -14,7 +16,7 @@ function AuthGate() {
   if (!ready) return null;
   if (!user) return <LoginPage />;
 
-  return <Shell email={user.email} onSignOut={signOut} />;
+  return <Shell onSignOut={signOut} />;
 }
 
 const navItems = [
@@ -33,9 +35,9 @@ export function App() {
   );
 }
 
-function Shell({ email, onSignOut }: { email?: string; onSignOut: () => void }) {
+function Shell({ onSignOut }: { onSignOut: () => void }) {
   return (
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <div className="min-h-screen bg-slate-100 text-slate-900">
           <header className="border-b border-slate-200 bg-white/90 backdrop-blur-sm">
             <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
@@ -67,7 +69,9 @@ function Shell({ email, onSignOut }: { email?: string; onSignOut: () => void }) 
               </nav>
 
               <div className="flex items-center gap-3 text-sm text-slate-600">
-                <span className="hidden sm:inline">{email}</span>
+                <NavLink to="/account" aria-label="Account settings" className="flex items-center gap-2 rounded-full hover:opacity-80">
+                  <Avatar />
+                </NavLink>
                 <button
                   type="button"
                   onClick={onSignOut}
@@ -84,6 +88,7 @@ function Shell({ email, onSignOut }: { email?: string; onSignOut: () => void }) 
               <Route path="/" element={<BooksPage />} />
               <Route path="/scan" element={<BatchScanPage />} />
               <Route path="/collections" element={<CollectionsPage />} />
+              <Route path="/account" element={<AccountPage />} />
             </Routes>
           </main>
         </div>

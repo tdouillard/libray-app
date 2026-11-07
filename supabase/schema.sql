@@ -64,3 +64,41 @@ create policy "collection_books: owner" on public.collection_books for all to au
 
 revoke all on public.books, public.collections, public.collection_books from anon;
 grant select, insert, update, delete on public.books, public.collections, public.collection_books to authenticated;
+
+-- Profile photos: private bucket, JPEG only, 2 MB, one file per user at "<user id>/avatar.jpg".
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('avatars', 'avatars', false, 2097152, array['image/jpeg'])
+  on conflict (id) do update set public = false, file_size_limit = 2097152, allowed_mime_types = array['image/jpeg'];
+
+drop policy if exists "avatars: own read" on storage.objects;
+drop policy if exists "avatars: own insert" on storage.objects;
+drop policy if exists "avatars: own update" on storage.objects;
+drop policy if exists "avatars: own delete" on storage.objects;
+
+create policy "avatars: own read" on storage.objects for select to authenticated
+  using (bucket_id = 'avatars' and name = (select auth.uid())::text || '/avatar.jpg');
+create policy "avatars: own insert" on storage.objects for insert to authenticated
+  with check (bucket_id = 'avatars' and name = (select auth.uid())::text || '/avatar.jpg');
+create policy "avatars: own update" on storage.objects for update to authenticated
+  using (bucket_id = 'avatars' and name = (select auth.uid())::text || '/avatar.jpg')
+  with check (bucket_id = 'avatars' and name = (select auth.uid())::text || '/avatar.jpg');
+create policy "avatars: own delete" on storage.objects for delete to authenticated
+  using (bucket_id = 'avatars' and name = (select auth.uid())::text || '/avatar.jpg');
+
+-- Deletes the signed-in account. Only allowed shortly after signing in (the session must be under 10 minutes old).
+-- Books, collections and their links are removed by cascade.
+create or replace function public.delete_my_account() returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  uid uuid := (select auth.uid());
+  sid uuid := nullif((select auth.jwt()) ->> 'session_id', '')::uuid;
+begin
+  if uid is null then raise exception 'not_signed_in'; end if;
+  if not exists (select 1 from auth.sessions s where s.id = sid and s.created_at > now() - interval '10 minutes') then
+    raise exception 'recent_login_required';
+  end if;
+  delete from auth.users where id = uid;
+end $$;
+
+revoke all on function public.delete_my_account() from public, anon;
+grant execute on function public.delete_my_account() to authenticated;

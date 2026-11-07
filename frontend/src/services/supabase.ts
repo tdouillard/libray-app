@@ -7,6 +7,7 @@ const EXPIRY_SKEW_SECONDS = 60;
 export interface SupabaseUser {
   id: string;
   email?: string;
+  new_email?: string;
   user_metadata?: { username?: string } & Record<string, unknown>;
 }
 
@@ -29,6 +30,13 @@ export class ApiError extends Error {
 const KNOWN_ERRORS: Record<string, string> = {
   invalid_credentials: "Invalid email or password.",
   email_not_confirmed: "Please confirm your email address first.",
+  weak_password: "Password too weak (6 characters minimum).",
+  same_password: "The new password must differ from the current one.",
+  reauthentication_needed: "Verification required: enter the code you received by email.",
+  reauthentication_not_valid: "Invalid or expired verification code.",
+  email_exists: "This email address is already in use.",
+  email_address_invalid: "Enter a valid email address.",
+  recent_login_required: "For your security, sign out and sign in again, then delete your account.",
   over_email_send_rate_limit: "Too many emails sent, try again later.",
 };
 
@@ -93,16 +101,17 @@ export class SupabaseClient {
 
   private async call(path: string, { method = "GET", body, token, headers = {} }: CallOptions = {}) {
     let res: Response;
+    const raw = body instanceof Blob;
     try {
       res = await this.fetchFn(this.url + path, {
         method,
         headers: {
           apikey: this.key,
-          "Content-Type": "application/json",
+          "Content-Type": raw ? (body as Blob).type : "application/json",
           Authorization: "Bearer " + (token || this.key),
           ...headers,
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? undefined : raw ? (body as Blob) : JSON.stringify(body),
       });
     } catch {
       throw new ApiError("Network error, check your connection.");
@@ -161,14 +170,73 @@ export class SupabaseClient {
     return this.session!.access_token;
   }
 
+  /* Drops the local session without calling the server (used once the account no longer exists). */
+  forgetSession() {
+    this.writeSession(null);
+  }
+
+  /* Ends every other session of the signed-in user; this browser stays signed in. */
+  async signOutOthers() {
+    await this.call("/auth/v1/logout?scope=others", { method: "POST", token: await this.accessToken() });
+  }
+
+  /* Session handed over in the URL hash after an email confirmation link. Returns true when one was consumed. */
+  async consumeHashSession(hash: string): Promise<boolean> {
+    const params = new URLSearchParams(String(hash || "").replace(/^#/, ""));
+    const token = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+    if (!token || !refreshToken) return false;
+    const user = await this.call("/auth/v1/user", { token });
+    this.storeTokens({
+      access_token: token,
+      refresh_token: refreshToken,
+      expires_in: Number(params.get("expires_in")) || 3600,
+      user,
+    });
+    return true;
+  }
+
+  /* Updates the signed-in user (email, password, user_metadata). An email change only applies once the
+     confirmation link is opened; until then the returned user carries `new_email`. */
+  async updateUser(attributes: Record<string, unknown>, redirectTo?: string): Promise<SupabaseUser> {
+    const token = await this.accessToken();
+    const query = redirectTo ? "?redirect_to=" + encodeURIComponent(redirectTo) : "";
+    const user = await this.call("/auth/v1/user" + query, { method: "PUT", token, body: attributes });
+    this.writeSession({ ...this.session!, user });
+    return user;
+  }
+
+  /* Emails a one-time code (nonce) that confirms a sensitive change such as an email or password update. */
+  async reauthenticate() {
+    await this.call("/auth/v1/reauthenticate", { token: await this.accessToken() });
+  }
+
   /* PostgREST call authenticated as the signed-in user; refreshes the token once on a 401. */
-  async rest<T = any>(path: string, options: Omit<CallOptions, "token"> = {}): Promise<T> {
+  rest<T = any>(path: string, options: Omit<CallOptions, "token"> = {}): Promise<T> {
+    return this.authorized(`/rest/v1${path}`, options);
+  }
+
+  /* Private objects of the signed-in user: upload (replaces an existing file), short-lived link, removal. */
+  async uploadObject(bucket: string, objectPath: string, blob: Blob) {
+    await this.authorized(`/storage/v1/object/${bucket}/${objectPath}`, { method: "POST", body: blob, headers: { "x-upsert": "true" } });
+  }
+
+  async signedUrl(bucket: string, objectPath: string, expiresIn: number): Promise<string> {
+    const { signedURL } = await this.authorized(`/storage/v1/object/sign/${bucket}/${objectPath}`, { method: "POST", body: { expiresIn } });
+    return `${this.url}/storage/v1${signedURL}`;
+  }
+
+  async removeObject(bucket: string, objectPath: string) {
+    await this.authorized(`/storage/v1/object/${bucket}`, { method: "DELETE", body: { prefixes: [objectPath] } });
+  }
+
+  private async authorized(path: string, options: Omit<CallOptions, "token">) {
     try {
-      return await this.call(`/rest/v1${path}`, { ...options, token: await this.accessToken() });
+      return await this.call(path, { ...options, token: await this.accessToken() });
     } catch (e) {
       if (!(e instanceof ApiError) || e.status !== 401 || !this.session) throw e;
       await this.refresh();
-      return this.call(`/rest/v1${path}`, { ...options, token: this.session!.access_token });
+      return this.call(path, { ...options, token: this.session!.access_token });
     }
   }
 }
