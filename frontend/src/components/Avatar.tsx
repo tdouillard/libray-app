@@ -4,7 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 export const AVATAR_CHANGED = "libray:avatar-changed";
 
 /* The signed-in user's photo, or their initials when there is none. Reloads when the photo changes. */
-export function Avatar({ size = "md" }: { size?: "md" | "xl" }) {
+export function Avatar({ size = "md" }: { size?: "md" | "lg" | "xl" }) {
   const { user, initials, avatarUrl } = useAuth();
   const [url, setUrl] = useState("");
 
@@ -23,7 +23,7 @@ export function Avatar({ size = "md" }: { size?: "md" | "xl" }) {
     };
   }, [user?.id, avatarUrl]);
 
-  const box = size === "xl" ? "h-20 w-20 text-2xl" : "h-9 w-9 text-sm";
+  const box = size === "xl" ? "h-20 w-20 text-2xl" : size === "lg" ? "h-12 w-12 text-base" : "h-9 w-9 text-sm";
   return url ? (
     <img src={url} alt="" referrerPolicy="no-referrer" className={`${box} rounded-full object-cover`} />
   ) : (

@@ -13,6 +13,8 @@ interface AuthValue {
   signOut: () => Promise<void>;
   /* Each of these throws an Error with a readable message on failure. */
   saveProfile: (username: string) => Promise<void>;
+  /* Remembers the interface language on the account (so every device uses it). */
+  saveLanguage: (language: string) => Promise<void>;
   requestEmailCode: () => Promise<void>;
   changeEmail: (email: string, code: string) => Promise<void>;
   /* Emails a link (valid for the signed-in address) that leads to the "new password" screen. */
@@ -82,6 +84,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await supabase.updateUser({ data: { username: username.trim() } }));
   }, []);
 
+  const saveLanguage = useCallback(async (language: string) => {
+    const username = supabase.user?.user_metadata?.username ?? "";
+    setUser(await supabase.updateUser({ data: { username, language } }));
+  }, []);
+
   const requestEmailCode = useCallback(() => supabase.reauthenticate(), []);
 
   const changeEmail = useCallback(async (email: string, code: string) => {
@@ -132,10 +139,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const initials = (parts.length > 1 ? parts[0][0] + parts[1][0] : displayName.slice(0, 2) || "?").toUpperCase();
     return {
       user, ready, recovering, displayName, initials,
-      signIn, signOut, saveProfile, requestEmailCode, changeEmail, sendResetLink, completeRecovery, skipRecovery,
+      signIn, signOut, saveProfile, saveLanguage, requestEmailCode, changeEmail, sendResetLink, completeRecovery, skipRecovery,
       signOutOthers, uploadAvatar, removeAvatar, avatarUrl, deleteAccount,
     };
-  }, [user, ready, recovering, signIn, signOut, saveProfile, requestEmailCode, changeEmail, sendResetLink, completeRecovery, skipRecovery,
+  }, [user, ready, recovering, signIn, signOut, saveProfile, saveLanguage, requestEmailCode, changeEmail, sendResetLink, completeRecovery, skipRecovery,
       signOutOthers, uploadAvatar, removeAvatar, avatarUrl, deleteAccount]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

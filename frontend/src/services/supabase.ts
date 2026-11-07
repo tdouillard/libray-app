@@ -1,6 +1,8 @@
 /* Minimal Supabase client (GoTrue email/password auth + PostgREST over fetch) with a persisted session.
    Same approach as the expense-split project (but against libray-app's own Supabase project). */
 
+import { t, type MessageKey } from "../i18n";
+
 const SESSION_KEY = "libray.session";
 const EXPIRY_SKEW_SECONDS = 60;
 
@@ -8,7 +10,7 @@ export interface SupabaseUser {
   id: string;
   email?: string;
   new_email?: string;
-  user_metadata?: { username?: string } & Record<string, unknown>;
+  user_metadata?: { username?: string; language?: string } & Record<string, unknown>;
 }
 
 interface Session {
@@ -27,24 +29,25 @@ export class ApiError extends Error {
   }
 }
 
-const KNOWN_ERRORS: Record<string, string> = {
-  invalid_credentials: "Invalid email or password.",
-  email_not_confirmed: "Please confirm your email address first.",
-  weak_password: "Password too weak (6 characters minimum).",
-  same_password: "The new password must differ from the current one.",
-  reauthentication_needed: "Verification required: enter the code you received by email.",
-  reauthentication_not_valid: "Invalid or expired verification code.",
-  email_exists: "This email address is already in use.",
-  email_address_invalid: "Enter a valid email address.",
-  recent_login_required: "For your security, sign out and sign in again, then delete your account.",
-  over_email_send_rate_limit: "Too many emails sent, try again later.",
+/* Maps Supabase error codes to message keys (see the i18n dictionaries). */
+const KNOWN_ERRORS: Record<string, MessageKey> = {
+  invalid_credentials: "error.invalid_credentials",
+  email_not_confirmed: "error.email_not_confirmed",
+  over_email_send_rate_limit: "error.over_email_send_rate_limit",
+  weak_password: "error.weak_password",
+  same_password: "error.same_password",
+  reauthentication_needed: "error.reauthentication_needed",
+  reauthentication_not_valid: "error.reauthentication_not_valid",
+  email_exists: "error.email_exists",
+  email_address_invalid: "error.email_address_invalid",
+  recent_login_required: "error.recent_login_required",
 };
 
 function messageOf(data: any, status: number): string {
   for (const code of [data?.error_code, data?.code, data?.message]) {
-    if (code && KNOWN_ERRORS[code]) return KNOWN_ERRORS[code];
+    if (code && Object.prototype.hasOwnProperty.call(KNOWN_ERRORS, code)) return t(KNOWN_ERRORS[code]);
   }
-  if (/invalid login credentials/i.test(data?.msg || data?.message || "")) return KNOWN_ERRORS.invalid_credentials;
+  if (/invalid login credentials/i.test(data?.msg || data?.message || "")) return t("error.invalid_credentials");
   return data?.msg || data?.message || data?.error_description || data?.error || `Error ${status}`;
 }
 
@@ -114,7 +117,7 @@ export class SupabaseClient {
         body: body === undefined ? undefined : raw ? (body as Blob) : JSON.stringify(body),
       });
     } catch {
-      throw new ApiError("Network error, check your connection.");
+      throw new ApiError(t("error.network"));
     }
     const text = await res.text();
     let data: any = null;
@@ -155,7 +158,7 @@ export class SupabaseClient {
 
   private async refresh() {
     const refreshToken = this.session?.refresh_token;
-    if (!refreshToken) throw new ApiError("Session expired, please sign in again.", 401);
+    if (!refreshToken) throw new ApiError(t("error.sessionExpired"), 401);
     try {
       this.storeTokens(await this.call("/auth/v1/token?grant_type=refresh_token", { method: "POST", body: { refresh_token: refreshToken } }));
     } catch (e) {
@@ -165,7 +168,7 @@ export class SupabaseClient {
   }
 
   async accessToken(): Promise<string> {
-    if (!this.session) throw new ApiError("Not signed in.", 401);
+    if (!this.session) throw new ApiError(t("error.notSignedIn"), 401);
     if (this.session.expires_at - EXPIRY_SKEW_SECONDS <= this.now() / 1000) await this.refresh();
     return this.session!.access_token;
   }

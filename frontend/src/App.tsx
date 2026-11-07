@@ -4,7 +4,9 @@ import { BooksPage } from "./pages/BooksPage";
 import { BatchScanPage } from "./pages/BatchScanPage";
 import { CollectionsPage } from "./pages/CollectionsPage";
 import { AccountPage } from "./pages/AccountPage";
-import { Avatar } from "./components/Avatar";
+import { ProfileMenu } from "./components/ProfileMenu";
+import { I18nProvider, useI18n } from "./i18n/I18nContext";
+import { useLanguageSync } from "./auth/useLanguage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { LoginPage } from "./pages/LoginPage";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
@@ -12,32 +14,36 @@ import { AuthProvider, useAuth } from "./auth/AuthContext";
 const queryClient = new QueryClient();
 
 function AuthGate() {
-  const { user, ready, recovering, signOut } = useAuth();
+  const { user, ready, recovering } = useAuth();
+  useLanguageSync();
 
   if (!ready) return null;
   if (!user) return <LoginPage />;
   if (recovering) return <ResetPasswordPage />;
 
-  return <Shell onSignOut={signOut} />;
+  return <Shell />;
 }
 
 const navItems = [
-  { to: "/", label: "Books" },
-  { to: "/scan", label: "Batch scan" },
-  { to: "/collections", label: "Collections" },
-];
+  { to: "/", label: "nav.books" },
+  { to: "/scan", label: "nav.scan" },
+  { to: "/collections", label: "nav.collections" },
+] as const;
 
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <AuthGate />
-      </AuthProvider>
+      <I18nProvider>
+        <AuthProvider>
+          <AuthGate />
+        </AuthProvider>
+      </I18nProvider>
     </QueryClientProvider>
   );
 }
 
-function Shell({ onSignOut }: { onSignOut: () => void }) {
+function Shell() {
+  const { t } = useI18n();
   return (
       <BrowserRouter basename={import.meta.env.BASE_URL}>
         <div className="min-h-screen bg-slate-100 text-slate-900">
@@ -45,14 +51,14 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
             <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                  Personal library
+                  {t("app.tagline")}
                 </p>
                 <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">
                   Libray
                 </h1>
               </div>
 
-              <nav className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1.5">
+              <nav aria-label={t("nav.label")} className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1.5">
                 {navItems.map((item) => (
                   <NavLink
                     key={item.to}
@@ -65,23 +71,12 @@ function Shell({ onSignOut }: { onSignOut: () => void }) {
                       }`
                     }
                   >
-                    {item.label}
+                    {t(item.label)}
                   </NavLink>
                 ))}
               </nav>
 
-              <div className="flex items-center gap-3 text-sm text-slate-600">
-                <NavLink to="/account" aria-label="Account settings" className="flex items-center gap-2 rounded-full hover:opacity-80">
-                  <Avatar />
-                </NavLink>
-                <button
-                  type="button"
-                  onClick={onSignOut}
-                  className="rounded-full border border-slate-200 px-3 py-1.5 font-medium hover:bg-white"
-                >
-                  Sign out
-                </button>
-              </div>
+              <ProfileMenu />
             </div>
           </header>
 

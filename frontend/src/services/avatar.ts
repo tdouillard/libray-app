@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+
 export const AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp"];
 export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 const AVATAR_SIZE = 512;
@@ -5,10 +7,10 @@ const AVATAR_SIZE = 512;
 /* Storage path of a user's photo. Must match the storage policies in supabase/schema.sql. */
 export const avatarPath = (userId: string) => `${userId}/avatar.jpg`;
 
-/* Returns a message describing the problem with a picked file, or "" when it can be used. */
+/* Returns a (translated) message describing the problem with a picked file, or "" when it can be used. */
 export function avatarProblem(file: Pick<File, "type" | "size">): string {
-  if (!AVATAR_TYPES.includes(file.type)) return "Use a JPEG, PNG or WebP picture.";
-  if (file.size > AVATAR_MAX_BYTES) return "The picture must be 2 MB or smaller.";
+  if (!AVATAR_TYPES.includes(file.type)) return t("account.photoType");
+  if (file.size > AVATAR_MAX_BYTES) return t("account.photoSize");
   return "";
 }
 

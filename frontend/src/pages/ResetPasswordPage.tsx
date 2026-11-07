@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "../auth/AuthContext";
+import { useI18n } from "../i18n/I18nContext";
 
 const inputClass = "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2";
 
 /* Shown after the user opens the link of a password reset email (they are signed in with a recovery session). */
 export function ResetPasswordPage() {
   const { completeRecovery, skipRecovery } = useAuth();
+  const { t } = useI18n();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
@@ -14,13 +16,13 @@ export function ResetPasswordPage() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError("");
-    if (password.length < 6) return setError("Password too short (6 characters minimum).");
-    if (password !== confirm) return setError("Passwords do not match.");
+    if (password.length < 6) return setError(t("reset.short"));
+    if (password !== confirm) return setError(t("reset.mismatch"));
     setBusy(true);
     try {
       await completeRecovery(password); // leaves this screen once the password is saved
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not change the password.");
+      setError(e instanceof Error ? e.message : t("reset.failed"));
       setBusy(false);
     }
   }
@@ -29,12 +31,12 @@ export function ResetPasswordPage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Personal library</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">New password</h1>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{t("app.tagline")}</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">{t("reset.title")}</h1>
         </div>
 
         <label className="block text-sm font-medium text-slate-700">
-          New password
+          {t("reset.new")}
           <input
             type="password"
             autoComplete="new-password"
@@ -46,7 +48,7 @@ export function ResetPasswordPage() {
           />
         </label>
         <label className="block text-sm font-medium text-slate-700">
-          Confirm password
+          {t("reset.confirm")}
           <input
             type="password"
             autoComplete="new-password"
@@ -64,10 +66,10 @@ export function ResetPasswordPage() {
           disabled={busy}
           className="w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
-          {busy ? "Saving…" : "Change password"}
+          {busy ? t("reset.busy") : t("reset.submit")}
         </button>
         <button type="button" onClick={skipRecovery} className="w-full text-sm text-slate-500 hover:text-slate-700">
-          Skip for now
+          {t("reset.skip")}
         </button>
       </form>
     </div>
