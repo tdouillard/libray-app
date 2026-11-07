@@ -2,8 +2,19 @@ import { BrowserRouter, NavLink, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BooksPage } from "./pages/BooksPage";
 import { CollectionsPage } from "./pages/CollectionsPage";
+import { LoginPage } from "./pages/LoginPage";
+import { AuthProvider, useAuth } from "./auth/AuthContext";
 
 const queryClient = new QueryClient();
+
+function AuthGate() {
+  const { user, ready, signOut } = useAuth();
+
+  if (!ready) return null;
+  if (!user) return <LoginPage />;
+
+  return <Shell email={user.email} onSignOut={signOut} />;
+}
 
 const navItems = [
   { to: "/", label: "Books" },
@@ -13,6 +24,15 @@ const navItems = [
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <AuthGate />
+      </AuthProvider>
+    </QueryClientProvider>
+  );
+}
+
+function Shell({ email, onSignOut }: { email?: string; onSignOut: () => void }) {
+  return (
       <BrowserRouter>
         <div className="min-h-screen bg-slate-100 text-slate-900">
           <header className="border-b border-slate-200 bg-white/90 backdrop-blur-sm">
@@ -43,6 +63,17 @@ export function App() {
                   </NavLink>
                 ))}
               </nav>
+
+              <div className="flex items-center gap-3 text-sm text-slate-600">
+                <span className="hidden sm:inline">{email}</span>
+                <button
+                  type="button"
+                  onClick={onSignOut}
+                  className="rounded-full border border-slate-200 px-3 py-1.5 font-medium hover:bg-white"
+                >
+                  Sign out
+                </button>
+              </div>
             </div>
           </header>
 
@@ -54,6 +85,5 @@ export function App() {
           </main>
         </div>
       </BrowserRouter>
-    </QueryClientProvider>
   );
 }

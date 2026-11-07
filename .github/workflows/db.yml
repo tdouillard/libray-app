@@ -1,0 +1,63 @@
+name: db
+
+# Runs when a merge lands on dev and touches the database files, or manually.
+# No pull_request trigger: PRs and forks can never reach the database secrets.
+# supabase/schema.sql only creates/updates libray tables (books, collections, collection_books)
+# and is safe to re-run.
+on:
+  push:
+    branches: [dev]
+    paths:
+      - supabase/**
+      - backend/src/db/setup-supabase.ts
+      - .github/workflows/db.yml
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: db
+  cancel-in-progress: false
+
+jobs:
+  test:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - run: npm test -w frontend
+
+  migrate:
+    needs: test
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    # Secrets live in this environment; restrict its deployment branch to dev in repo settings.
+    environment: db-production
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_DB_HOST: ${{ secrets.SUPABASE_DB_HOST }}
+      SUPABASE_DB_USER: ${{ secrets.SUPABASE_DB_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+
+      - name: Apply schema
+        run: npm run db:setup -w backend

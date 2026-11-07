@@ -32,6 +32,10 @@ jobs:
 
       - name: Build frontend
         run: npm run build -w frontend
+        env:
+          # Public values (URL + publishable key) of libray-app's Supabase project.
+          VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          VITE_SUPABASE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
 
       - name: Add SPA fallback
         run: cp frontend/dist/index.html frontend/dist/404.html

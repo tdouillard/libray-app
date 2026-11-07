@@ -9,40 +9,37 @@ export function useLibraryData() {
 
   const refreshLibrary = useCallback(async () => {
     setIsLoading(true);
-    const [nextBooks, nextCollections] = await Promise.all([
-      libraryApi.getBooks(),
-      libraryApi.getCollections(),
-    ]);
-    setBooks(nextBooks);
-    setCollections(nextCollections);
-    setIsLoading(false);
+    try {
+      const [nextBooks, nextCollections] = await Promise.all([
+        libraryApi.getBooks(),
+        libraryApi.getCollections(),
+      ]);
+      setBooks(nextBooks);
+      setCollections(nextCollections);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   const addBook = useCallback(async (book: Book) => {
-    const nextBooks = [book, ...books];
-    setBooks(nextBooks);
-    await libraryApi.saveBooks(nextBooks);
-  }, [books]);
+    await libraryApi.createBook(book);
+    setBooks((current) => [book, ...current]);
+  }, []);
 
   const addCollection = useCallback(async (collection: Collection) => {
-    const nextCollections = [collection, ...collections];
-    setCollections(nextCollections);
-    await libraryApi.saveCollections(nextCollections);
-  }, [collections]);
+    await libraryApi.createCollection(collection);
+    setCollections((current) => [collection, ...current]);
+  }, []);
 
   const updateBook = useCallback(async (bookId: string, updates: Partial<Book>) => {
-    const nextBooks = books.map((book) =>
-      book.id === bookId ? { ...book, ...updates } : book
-    );
-    setBooks(nextBooks);
-    await libraryApi.saveBooks(nextBooks);
-  }, [books]);
+    await libraryApi.updateBook(bookId, updates);
+    setBooks((current) => current.map((book) => (book.id === bookId ? { ...book, ...updates } : book)));
+  }, []);
 
   const deleteBook = useCallback(async (bookId: string) => {
-    const nextBooks = books.filter((book) => book.id !== bookId);
-    setBooks(nextBooks);
-    await libraryApi.saveBooks(nextBooks);
-  }, [books]);
+    await libraryApi.deleteBook(bookId);
+    setBooks((current) => current.filter((book) => book.id !== bookId));
+  }, []);
 
   useEffect(() => {
     void refreshLibrary();

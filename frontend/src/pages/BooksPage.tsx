@@ -106,7 +106,7 @@ export function BooksPage() {
     event.preventDefault();
 
     const newBook: Book = {
-      id: `book-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: formValues.title,
       author: formValues.author,
       isbn: formValues.isbn,

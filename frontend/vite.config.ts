@@ -1,11 +1,13 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { supabaseDefine } from "./supabaseEnv";
 
 const pagesBase = process.env.GITHUB_ACTIONS === "true" ? "/libray-app/" : "/";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   base: pagesBase,
+  define: supabaseDefine(mode),
   plugins: [react()],
   resolve: {
     alias: {
@@ -26,4 +28,4 @@ export default defineConfig({
     setupFiles: "./src/test/setup.ts",
     globals: true,
   },
-});
+}));

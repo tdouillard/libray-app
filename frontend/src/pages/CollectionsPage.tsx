@@ -18,7 +18,7 @@ export function CollectionsPage() {
     event.preventDefault();
 
     const newCollection: Collection = {
-      id: `collection-${Date.now()}`,
+      id: crypto.randomUUID(),
       name: formValues.name,
       description: formValues.description || "A curated shelf of favorites.",
       accent: formValues.accent,

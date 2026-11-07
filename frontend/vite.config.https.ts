@@ -2,8 +2,10 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import fs from "fs";
 import path from "path";
+import { supabaseDefine } from "./supabaseEnv";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  define: supabaseDefine(mode),
   plugins: [react()],
   resolve: {
     alias: {
@@ -29,4 +31,4 @@ export default defineConfig({
     setupFiles: "./src/test/setup.ts",
     globals: true,
   },
-});
+}));

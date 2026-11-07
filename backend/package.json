@@ -12,6 +12,7 @@
     "test": "vitest",
     "lint": "eslint src",
     "db:generate": "drizzle-kit generate:pg",
+    "db:setup": "tsx src/db/setup-supabase.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:push": "drizzle-kit push:pg",
     "db:drop": "drizzle-kit drop"
