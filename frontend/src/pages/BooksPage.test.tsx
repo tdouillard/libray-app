@@ -1,18 +1,9 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { BooksPage } from "./BooksPage";
 
 const getUserMediaMock = vi.fn();
 const lookupBookByIsbnMock = vi.fn();
-const buildBookFormFromMetadataMock = vi.fn();
-const decodeFromStreamMock = vi.fn();
-const decodeFromImageUrlMock = vi.fn();
-const resetMock = vi.fn();
-const drawImageMock = vi.fn();
-const toDataUrlMock = vi.fn(() => "data:image/png;base64,frame");
-
-let decodeCallback:
-  | ((result?: { getText: () => string } | null, error?: { name: string } | null) => void)
-  | null = null;
+const detectMock = vi.fn();
 
 vi.mock("../hooks/useLibraryData", () => ({
   useLibraryData: () => ({
@@ -24,210 +15,117 @@ vi.mock("../hooks/useLibraryData", () => ({
   }),
 }));
 
-vi.mock("../services/openLibrary", () => ({
+vi.mock("../services/bookLookup", () => ({
   lookupBookByIsbn: (isbn: string) => lookupBookByIsbnMock(isbn),
-  buildBookFormFromMetadata: (metadata: unknown, current: unknown) =>
-    buildBookFormFromMetadataMock(metadata, current),
+  buildBookFormFromMetadata: (metadata: Record<string, unknown>, current: Record<string, unknown>) => ({
+    ...current,
+    ...metadata,
+  }),
 }));
 
-vi.mock("@zxing/library", () => ({
-  DecodeHintType: {
-    TRY_HARDER: "TRY_HARDER",
-    POSSIBLE_FORMATS: "POSSIBLE_FORMATS",
+vi.mock("barcode-detector/ponyfill", () => ({
+  prepareZXingModule: vi.fn(),
+  BarcodeDetector: class {
+    detect = detectMock;
   },
-  BarcodeFormat: {
-    EAN_13: "EAN_13",
-    EAN_8: "EAN_8",
-    UPC_A: "UPC_A",
-    UPC_E: "UPC_E",
-    CODE_128: "CODE_128",
-    CODE_39: "CODE_39",
-    ITF: "ITF",
-  },
-  BrowserMultiFormatReader: vi.fn(() => ({
-    decodeFromStream: decodeFromStreamMock,
-    decodeFromImageUrl: decodeFromImageUrlMock,
-    reset: resetMock,
-  })),
 }));
 
-function setupScannerMocks() {
-  const track = { stop: vi.fn() };
-  const videoTrack = { applyConstraints: vi.fn().mockResolvedValue(undefined) };
+vi.mock("zxing-wasm/reader/zxing_reader.wasm?url", () => ({ default: "/zxing_reader.wasm" }));
+
+function setupCamera() {
+  const track = {
+    stop: vi.fn(),
+    applyConstraints: vi.fn().mockResolvedValue(undefined),
+    getCapabilities: () => ({}),
+  };
   const stream = {
     getTracks: () => [track],
-    getVideoTracks: () => [videoTrack],
+    getVideoTracks: () => [track],
   };
   getUserMediaMock.mockResolvedValue(stream);
-  decodeFromStreamMock.mockImplementation(
-    async (
-      _deviceId: string | null,
-      _video: HTMLVideoElement,
-      callback: (result?: { getText: () => string } | null, error?: { name: string } | null) => void
-    ) => {
-      decodeCallback = callback;
-    }
-  );
-  return { track, videoTrack };
+  return { track };
 }
 
 function openScannerModal() {
   fireEvent.click(screen.getByRole("button", { name: "+ Add a book" }));
-  const scanButton = screen.getByRole("button", { name: "Scan" });
-  fireEvent.click(scanButton);
+  fireEvent.click(screen.getByRole("button", { name: "Scan" }));
 }
 
-describe("BooksPage scanner feature", () => {
+describe("BooksPage barcode scanner", () => {
   beforeEach(() => {
-    vi.useRealTimers();
-    decodeCallback = null;
     getUserMediaMock.mockReset();
     lookupBookByIsbnMock.mockReset();
-    buildBookFormFromMetadataMock.mockReset();
-    decodeFromStreamMock.mockReset();
-    decodeFromImageUrlMock.mockReset();
-    resetMock.mockReset();
-    drawImageMock.mockReset();
-    toDataUrlMock.mockReset();
-    toDataUrlMock.mockReturnValue("data:image/png;base64,frame");
+    detectMock.mockReset();
+    detectMock.mockResolvedValue([]);
 
+    // jsdom is not a secure context by default; pretend we are on https/localhost.
+    Object.defineProperty(window, "isSecureContext", { configurable: true, value: true });
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
-      value: {
-        getUserMedia: getUserMediaMock,
-      },
+      value: { getUserMedia: getUserMediaMock },
     });
-
-    Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
-      configurable: true,
-      value: vi.fn(() => ({
-        drawImage: drawImageMock,
-      })),
-    });
-
-    Object.defineProperty(HTMLCanvasElement.prototype, "toDataURL", {
-      configurable: true,
-      value: toDataUrlMock,
-    });
+    // jsdom never loads video data: pretend a frame is available.
+    Object.defineProperty(HTMLVideoElement.prototype, "readyState", { configurable: true, get: () => 4 });
+    Object.defineProperty(HTMLVideoElement.prototype, "videoWidth", { configurable: true, get: () => 1280 });
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("opens scanner popup when scan button is clicked", async () => {
-    setupScannerMocks();
+  it("opens the scanner popup and asks for the rear camera", async () => {
+    setupCamera();
     render(<BooksPage />);
 
     openScannerModal();
 
     expect(await screen.findByText("Scan a book ISBN")).not.toBeNull();
-  });
-
-  it("requests camera permission when scanner starts", async () => {
-    setupScannerMocks();
-    render(<BooksPage />);
-
-    openScannerModal();
-
     await waitFor(() => {
       expect(getUserMediaMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          video: expect.objectContaining({
-            facingMode: { ideal: "environment" },
-          }),
+          video: expect.objectContaining({ facingMode: { ideal: "environment" } }),
           audio: false,
         })
       );
     });
   });
 
-  it("fills ISBN and metadata when barcode is found", async () => {
-    setupScannerMocks();
-    lookupBookByIsbnMock.mockResolvedValue({ title: "Scanned title" });
-    buildBookFormFromMetadataMock.mockReturnValue({
-      title: "Scanned title",
-      author: "Scanned author",
-      description: "Scanned description",
-      year: 2024,
-      tags: ["Scanned"],
+  it("fills ISBN and metadata when a book barcode is detected", async () => {
+    setupCamera();
+    detectMock.mockResolvedValue([{ rawValue: "9782344059487", format: "ean_13" }]);
+    lookupBookByIsbnMock.mockResolvedValue({
+      title: "Goetz",
+      author: "Fane, Didier Cassegrain",
+      sources: ["BnF"],
     });
 
     render(<BooksPage />);
     openScannerModal();
-
-    await waitFor(() => expect(decodeCallback).not.toBeNull());
-
-    await act(async () => {
-      decodeCallback?.({ getText: () => "9780306406157" }, null);
-    });
 
     await waitFor(() => {
-      const isbnInput = screen.getByPlaceholderText("978-...") as HTMLInputElement;
-      const titleInput = screen.getByPlaceholderText("The Name of the Wind") as HTMLInputElement;
-      const authorInput = screen.getByPlaceholderText("Patrick Rothfuss") as HTMLInputElement;
-
-      expect(isbnInput.value).toBe("9780306406157");
-      expect(titleInput.value).toBe("Scanned title");
-      expect(authorInput.value).toBe("Scanned author");
+      expect((screen.getByPlaceholderText("978-...") as HTMLInputElement).value).toBe("9782344059487");
+      expect((screen.getByPlaceholderText("The Name of the Wind") as HTMLInputElement).value).toBe("Goetz");
+      expect((screen.getByPlaceholderText("Patrick Rothfuss") as HTMLInputElement).value).toBe(
+        "Fane, Didier Cassegrain"
+      );
     });
+
+    expect(lookupBookByIsbnMock).toHaveBeenCalledWith("9782344059487");
+    expect(screen.queryByText("Scan a book ISBN")).toBeNull();
   });
 
-  it("shows timeout message when no barcode is detected in time", async () => {
-    vi.useFakeTimers();
-    setupScannerMocks();
-    render(<BooksPage />);
+  it("ignores barcodes that are not valid ISBNs and keeps scanning", async () => {
+    setupCamera();
+    detectMock
+      .mockResolvedValueOnce([{ rawValue: "5901234123457", format: "ean_13" }]) // valid EAN, but not a book
+      .mockResolvedValueOnce([{ rawValue: "9782344059480", format: "ean_13" }]) // bad checksum
+      .mockResolvedValue([{ rawValue: "9782344059487", format: "ean_13" }]);
+    lookupBookByIsbnMock.mockResolvedValue({ title: "Goetz" });
 
+    render(<BooksPage />);
     openScannerModal();
 
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(getUserMediaMock).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      vi.advanceTimersByTime(30000);
-    });
-
-    expect(screen.queryByText("Live scan timed out. Capture a frame or try again.")).not.toBeNull();
-  });
-
-  it("restarts scanning when re-scan button is clicked", async () => {
-    vi.useFakeTimers();
-    setupScannerMocks();
-    render(<BooksPage />);
-
-    openScannerModal();
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(getUserMediaMock).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      vi.advanceTimersByTime(30000);
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Re-scan" }));
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(getUserMediaMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("offers a force-focus action while scanning", async () => {
-    setupScannerMocks();
-    render(<BooksPage />);
-
-    openScannerModal();
-
-    expect(screen.getByRole("button", { name: "Force focus" })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Force focus" }));
-
-    await waitFor(() => {
-      expect(getUserMediaMock).toHaveBeenCalledTimes(2);
-    });
+    await waitFor(
+      () => expect((screen.getByPlaceholderText("978-...") as HTMLInputElement).value).toBe("9782344059487"),
+      { timeout: 3000 }
+    );
+    expect(lookupBookByIsbnMock).toHaveBeenCalledTimes(1);
   });
 
   it("shows a clear message when camera permission is denied", async () => {
@@ -241,46 +139,43 @@ describe("BooksPage scanner feature", () => {
     ).not.toBeNull();
   });
 
-  it("captures a frame and decodes it as a fallback", async () => {
-    vi.useFakeTimers();
-    setupScannerMocks();
-    lookupBookByIsbnMock.mockResolvedValue({ title: "Captured title" });
-    buildBookFormFromMetadataMock.mockReturnValue({
-      title: "Captured title",
-      author: "Captured author",
-      description: "Captured description",
-      year: 2025,
-      tags: ["Captured"],
-    });
-    decodeFromImageUrlMock.mockResolvedValue({
-      getText: () => "9780140328721",
-    });
+  it("lets the user type an ISBN when scanning is not possible", async () => {
+    getUserMediaMock.mockRejectedValue({ name: "NotFoundError" });
+    lookupBookByIsbnMock.mockResolvedValue({ title: "Goetz" });
+    render(<BooksPage />);
+    openScannerModal();
+
+    const manualInput = await screen.findByLabelText("ISBN typed manually");
+
+    fireEvent.change(manualInput, { target: { value: "978 2 344 05948 0" } });
+    fireEvent.click(screen.getByRole("button", { name: "Find" }));
+    expect(screen.getByText(/not a valid ISBN/)).not.toBeNull();
+    expect(lookupBookByIsbnMock).not.toHaveBeenCalled();
+
+    fireEvent.change(manualInput, { target: { value: "978-2-344-05948-7" } });
+    fireEvent.click(screen.getByRole("button", { name: "Find" }));
+
+    await waitFor(() => expect(lookupBookByIsbnMock).toHaveBeenCalledWith("9782344059487"));
+  });
+
+  it("decodes a photo chosen from the camera or gallery", async () => {
+    setupCamera();
+    const close = vi.fn();
+    vi.stubGlobal("createImageBitmap", vi.fn().mockResolvedValue({ close }));
+    lookupBookByIsbnMock.mockResolvedValue({ title: "Goetz" });
 
     render(<BooksPage />);
     openScannerModal();
 
-    await act(async () => {
-      await Promise.resolve();
-    });
+    // Live video frames find nothing; only the uploaded photo contains the barcode.
+    detectMock.mockImplementation(async (source: unknown) =>
+      source instanceof HTMLVideoElement ? [] : [{ rawValue: "9782344059487", format: "ean_13" }]
+    );
+    const input = await screen.findByTestId("scanner-file-input");
+    fireEvent.change(input, { target: { files: [new File(["x"], "barcode.jpg", { type: "image/jpeg" })] } });
 
-    await act(async () => {
-      vi.advanceTimersByTime(30000);
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Capture frame" }));
-
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    const isbnInput = screen.getByPlaceholderText("978-...") as HTMLInputElement;
-    const titleInput = screen.getByPlaceholderText("The Name of the Wind") as HTMLInputElement;
-
-    expect(drawImageMock).toHaveBeenCalled();
-    expect(toDataUrlMock).toHaveBeenCalledWith("image/png");
-    expect(decodeFromImageUrlMock).toHaveBeenCalledWith("data:image/png;base64,frame");
-    expect(isbnInput.value).toBe("9780140328721");
-    expect(titleInput.value).toBe("Captured title");
+    await waitFor(() => expect(lookupBookByIsbnMock).toHaveBeenCalledWith("9782344059487"));
+    expect(close).toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

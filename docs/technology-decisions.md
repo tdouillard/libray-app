@@ -38,11 +38,17 @@ This document outlines the major technology choices for the libray-app project a
 - Simple API for complex queries
 - Good TypeScript support
 
-**Barcode Scanning**: @zxing/library
-- Open-source, actively maintained
-- Browser-based barcode detection
-- Supports multiple barcode formats
-- No external service dependency
+**Barcode Scanning**: `barcode-detector` (MIT) + `zxing-wasm` (MIT, zxing-cpp compiled to WASM)
+- Uses the browser's native `BarcodeDetector` when it supports EAN-13 (Chrome/Android, Safari), otherwise the WASM ponyfill
+- Much better than the legacy `@zxing/library` on rotated / small / low-contrast barcodes
+- WASM is bundled with the app (no CDN dependency)
+- Only checksum-valid ISBNs (978/979) are accepted; other barcodes are ignored
+- Fallbacks: photo upload and manual ISBN entry
+
+**Book metadata lookup** (`frontend/src/services/bookLookup.ts`, all CORS-enabled, queried in parallel and merged)
+- Google Books (optional `VITE_GOOGLE_BOOKS_API_KEY` to avoid anonymous rate limits)
+- Open Library
+- BnF SRU catalogue: authoritative for French BD / manga that the other two often lack
 
 ---
 
