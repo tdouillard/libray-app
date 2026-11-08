@@ -120,6 +120,7 @@ const fr: Dictionary = {
   "scan.shelf.detected": "Lu sur la tranche",
   "scan.shelf.unmatched": "Lu sur la tranche mais introuvable dans les catalogues. Vérifiez le titre ou scannez le code-barres.",
   "scan.shelf.reading": "Lecture de la photo…",
+  "scan.shelf.analysing": "Lecture des tranches {done}/{total}…",
   "scan.shelf.matching": "Identification des livres {done}/{total}…",
   "scan.shelf.done": "{added} ajouté(s), {skipped} déjà dans le lot, {ignored} non reconnu(s).",
   "scan.shelf.none": "Aucun titre n’a pu être lu. Essayez une photo plus nette, mieux éclairée et plus proche de l’étagère.",

@@ -120,6 +120,7 @@ const en = {
   "scan.shelf.detected": "Read on the spine",
   "scan.shelf.unmatched": "Read on the spine but not found in any catalogue. Check the title or scan the barcode.",
   "scan.shelf.reading": "Reading the photo…",
+  "scan.shelf.analysing": "Reading spines {done}/{total}…",
   "scan.shelf.matching": "Identifying books {done}/{total}…",
   "scan.shelf.done": "{added} added, {skipped} already in the batch, {ignored} not recognised.",
   "scan.shelf.none": "No book title could be read. Try a sharper, better lit photo, closer to the shelf.",

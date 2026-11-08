@@ -111,7 +111,7 @@ export function BatchScanPage() {
     try {
       for (const file of Array.from(files)) {
         setShelfStatus(t("scan.shelf.reading"));
-        const spines = await readShelf(file);
+        const spines = await readShelf(file, (done, total) => setShelfStatus(t("scan.shelf.analysing", { done, total })));
         for (const [index, spine] of spines.entries()) {
           setShelfStatus(t("scan.shelf.matching", { done: index + 1, total: spines.length }));
           const result = await batch.addDetected(spine, kindRef.current);

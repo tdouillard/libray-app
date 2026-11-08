@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { findIsbnByText, textSimilarity } from "./shelfSearch";
+import { findIsbnByText, scoreCatalogueTitle, textSimilarity } from "./shelfSearch";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -33,5 +33,17 @@ describe("findIsbnByText", () => {
   it("throws on an HTTP error so the caller can tell it from 'not found'", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 503 }));
     await expect(findIsbnByText({ title: "Berserk" })).rejects.toThrow("HTTP 503");
+  });
+});
+
+describe("scoreCatalogueTitle", () => {
+  const wanted = { title: "Vagabond", volume: 3, hint: "VIZBIG" };
+  it("prefers the right edition and volume over look-alikes", () => {
+    const right = scoreCatalogueTitle(wanted, "Vagabond VIZBIG Edition, Vol. 3");
+    expect(right).toBeGreaterThan(scoreCatalogueTitle(wanted, "Midlife Vagabond 3"));
+    expect(right).toBeGreaterThan(0.5);
+  });
+  it("rejects another volume of the series", () => {
+    expect(scoreCatalogueTitle(wanted, "Vagabond VIZBIG Edition, Vol. 4")).toBe(0);
   });
 });

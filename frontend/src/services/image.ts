@@ -1,4 +1,4 @@
-export type Rotation = 0 | 90 | 270;
+export type Rotation = 0 | 90 | 180 | 270;
 
 /** Decodes a photo (honouring EXIF orientation), downscales it and optionally rotates it. */
 export async function photoToCanvas(file: Blob, maxSide: number, rotation: Rotation = 0): Promise<HTMLCanvasElement> {
@@ -8,7 +8,7 @@ export async function photoToCanvas(file: Blob, maxSide: number, rotation: Rotat
     const w = Math.round(bitmap.width * scale);
     const h = Math.round(bitmap.height * scale);
     const canvas = document.createElement("canvas");
-    const sideways = rotation !== 0;
+    const sideways = rotation === 90 || rotation === 270;
     canvas.width = sideways ? h : w;
     canvas.height = sideways ? w : h;
     const ctx = canvas.getContext("2d");
