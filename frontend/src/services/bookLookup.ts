@@ -323,6 +323,31 @@ export async function lookupBookByIsbn(
 
 const PLACEHOLDER_DESCRIPTION = "A newly added title to your library.";
 
+/** Fields a refresh may overwrite. Year, description and tags keep their existing safe rules. */
+export interface RefreshFields {
+  title: boolean;
+  author: boolean;
+  cover: boolean;
+  category: boolean;
+}
+export const ALL_REFRESH_FIELDS: RefreshFields = { title: true, author: true, cover: true, category: true };
+
+const MANGA_HINT = /(?<![\p{L}\d])(manga|manhwa|manhua|shonen|shōnen|seinen|shojo|shōjo|josei|light novel|kana|ki-oon|kurokawa|pika|doki-doki|meian|akata|kazé|kaze|taifu|tonkam)(?![\p{L}\d])/iu;
+const BD_HINT = /(?<![\p{L}\d])(bandes? dessinées?|comics?|graphic novels?|bd|cartoons?|comic strips?|dargaud|dupuis|lombard|casterman|futuropolis|urban comics|spirou|tintin)(?![\p{L}\d])/iu;
+
+/**
+ * Best guess of the category from what the catalogues said (tags/subjects, publisher, title).
+ * Returns undefined when nothing is conclusive, so a refresh never downgrades a category on a guess.
+ */
+export function inferKind(metadata: Pick<LookupResult, "title" | "tags" | "publisher">): BookKind | undefined {
+  const text = [...(metadata.tags ?? []), metadata.publisher ?? "", metadata.title ?? ""].join(" | ");
+  if (!text.trim()) return undefined;
+  // Manga first: "Glénat Manga" must not read as plain BD.
+  if (MANGA_HINT.test(text)) return "Manga";
+  if (BD_HINT.test(text)) return "BD";
+  return undefined;
+}
+
 /** "updated" = at least one field changed; "unchanged" = catalogues answered but nothing differed. */
 export type RefreshOutcome = "updated" | "unchanged" | "not-found" | "no-isbn" | "error";
 
@@ -339,7 +364,8 @@ export interface RefreshResult {
  * book still has the default placeholder, so anything the user wrote is preserved.
  */
 export async function refreshBookMetadata(
-  book: Pick<Book, "isbn" | "description" | "tags" | "kind">
+  book: Pick<Book, "isbn" | "description" | "tags" | "kind">,
+  fields: RefreshFields = ALL_REFRESH_FIELDS
 ): Promise<RefreshResult> {
   const isbn = normalizeIsbn(book.isbn);
   if (!isbn) {
@@ -352,10 +378,14 @@ export async function refreshBookMetadata(
   }
 
   const updates: Partial<Book> = {};
-  if (metadata.title) updates.title = metadata.title;
-  if (metadata.author) updates.author = metadata.author;
+  if (fields.title && metadata.title) updates.title = metadata.title;
+  if (fields.author && metadata.author) updates.author = metadata.author;
   if (metadata.year) updates.year = metadata.year;
-  if (metadata.cover) updates.cover = metadata.cover;
+  if (fields.cover && metadata.cover) updates.cover = metadata.cover;
+  if (fields.category) {
+    const kind = inferKind(metadata);
+    if (kind) updates.kind = kind;
+  }
 
   if (metadata.description && (!book.description || book.description === PLACEHOLDER_DESCRIPTION)) {
     updates.description = metadata.description;

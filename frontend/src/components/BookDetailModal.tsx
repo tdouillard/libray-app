@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { STATUS_META, STATUS_ORDER } from "../bookStatus";
-import type { RefreshOutcome } from "../services/bookLookup";
+import { ALL_REFRESH_FIELDS } from "../services/bookLookup";
+import type { RefreshFields, RefreshOutcome } from "../services/bookLookup";
 import type { RefreshOneResult } from "../hooks/useMetadataRefresh";
-import type { Book, BookStatus, Collection } from "../types";
+import { BOOK_KINDS } from "../types";
+import type { Book, BookKind, BookStatus, Collection } from "../types";
 import { BookCover, resolveCoverUrl } from "./BookCover";
+import { RefreshFieldsPicker } from "./RefreshFieldsPicker";
 
 interface BookDetailModalProps {
   book: Book | null;
@@ -15,7 +18,9 @@ interface BookDetailModalProps {
   /** Step through the currently visible books without closing the dialog. */
   onNavigate?: (direction: -1 | 1) => void;
   /** Re-fetches title, cover, etc. from the online catalogues. */
-  onRefreshMetadata?: (book: Book) => Promise<RefreshOneResult>;
+  onRefreshMetadata?: (book: Book, fields: RefreshFields) => Promise<RefreshOneResult>;
+  /** Saves manual edits (title, author, category, cover). */
+  onEdit?: (bookId: string, updates: Partial<Book>) => Promise<void> | void;
 }
 
 const PROVIDER_STATUS_LABEL = { found: "✓ found", "not-found": "✗ not found", error: "⚠ error" } as const;
@@ -44,17 +49,48 @@ function DetailDialog({
   onDelete,
   onNavigate,
   onRefreshMetadata,
+  onEdit,
 }: BookDetailModalProps & { book: Book }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshResult, setRefreshResult] = useState<RefreshOneResult | null>(null);
+  const [refreshFields, setRefreshFields] = useState<RefreshFields>(ALL_REFRESH_FIELDS);
+  const [showRefreshOptions, setShowRefreshOptions] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState({ title: "", author: "", kind: "Book" as BookKind, cover: "" });
+
+  const startEditing = () => {
+    setDraft({ title: book.title, author: book.author, kind: book.kind, cover: book.cover });
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    if (!onEdit || saving) return;
+    const next = {
+      title: draft.title.trim() || book.title, // a book can't end up without a title
+      author: draft.author.trim(),
+      kind: draft.kind,
+      cover: draft.cover.trim(),
+    };
+    const changes = Object.fromEntries(
+      Object.entries(next).filter(([key, value]) => value !== book[key as keyof typeof next])
+    ) as Partial<Book>;
+    setSaving(true);
+    try {
+      if (Object.keys(changes).length > 0) await onEdit(book.id, changes);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const refreshMetadata = async () => {
     if (!onRefreshMetadata || refreshing) return;
     setRefreshing(true);
     setRefreshResult(null);
     try {
-      setRefreshResult(await onRefreshMetadata(book));
+      setRefreshResult(await onRefreshMetadata(book, refreshFields));
     } finally {
       setRefreshing(false);
     }
@@ -171,15 +207,96 @@ function DetailDialog({
           </div>
 
           <div className="min-w-0 space-y-5">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
-                {book.kind} · {book.year}
-              </p>
-              <h2 id="book-detail-title" className="mt-1 text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
-                {book.title}
-              </h2>
-              <p className="mt-1 text-slate-600">{book.author}</p>
-            </div>
+            {editing ? (
+              <form
+                aria-label="Edit book"
+                className="space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveEdit();
+                }}
+              >
+                <h2 id="book-detail-title" className="sr-only">
+                  Editing {book.title}
+                </h2>
+                <label className="block text-sm font-medium text-slate-700">
+                  Title
+                  <input
+                    value={draft.title}
+                    onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+                    required
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Author
+                  <input
+                    value={draft.author}
+                    onChange={(event) => setDraft({ ...draft, author: event.target.value })}
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Category
+                  <select
+                    value={draft.kind}
+                    onChange={(event) => setDraft({ ...draft, kind: event.target.value as BookKind })}
+                    className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900"
+                  >
+                    {BOOK_KINDS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Cover image URL
+                  <input
+                    type="url"
+                    value={draft.cover}
+                    onChange={(event) => setDraft({ ...draft, cover: event.target.value })}
+                    placeholder="https://…"
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
+                  />
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="rounded-full bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60"
+                  >
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditing(false)}
+                    className="rounded-full border border-slate-200 px-4 py-1.5 text-sm hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
+                  {book.kind} · {book.year}
+                </p>
+                <h2 id="book-detail-title" className="mt-1 text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
+                  {book.title}
+                </h2>
+                <p className="mt-1 text-slate-600">{book.author}</p>
+                {onEdit && (
+                  <button
+                    type="button"
+                    onClick={startEditing}
+                    className="mt-2 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    ✎ Edit title, author, category, cover
+                  </button>
+                )}
+              </div>
+            )}
 
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center text-xl" role="group" aria-label="Rating">
@@ -245,6 +362,12 @@ function DetailDialog({
             )}
           </div>
         </div>
+
+        {showRefreshOptions && onRefreshMetadata && (
+          <div className="relative border-t border-slate-200 bg-white px-6 py-3 sm:px-8">
+            <RefreshFieldsPicker value={refreshFields} onChange={setRefreshFields} disabled={refreshing} />
+          </div>
+        )}
 
         {refreshResult && (
           <div role="status" className="relative border-t border-slate-200 bg-slate-50 px-6 py-3 text-sm sm:px-8">
@@ -316,7 +439,7 @@ function DetailDialog({
                   <button
                     type="button"
                     onClick={() => void refreshMetadata()}
-                    disabled={refreshing}
+                    disabled={refreshing || !Object.values(refreshFields).some(Boolean)}
                     aria-busy={refreshing}
                     className="flex items-center gap-2 whitespace-nowrap rounded-full border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-70"
                   >
@@ -334,6 +457,17 @@ function DetailDialog({
                       <path d="M21 4v5h-5" />
                     </svg>
                     {refreshing ? "Refreshing…" : "Refresh metadata"}
+                  </button>
+                )}
+                {onRefreshMetadata && (
+                  <button
+                    type="button"
+                    onClick={() => setShowRefreshOptions((open) => !open)}
+                    aria-expanded={showRefreshOptions}
+                    aria-label="Choose fields to refresh"
+                    className="rounded-full px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-50"
+                  >
+                    {showRefreshOptions ? "▴" : "▾"}
                   </button>
                 )}
               </>

@@ -6,7 +6,9 @@ import { BookRow } from "../components/BookRow";
 import { STATUS_META, STATUS_ORDER } from "../bookStatus";
 import { useLibraryData } from "../hooks/useLibraryData";
 import { hasNoCover, useMetadataRefresh } from "../hooks/useMetadataRefresh";
-import { buildBookFormFromMetadata, lookupBookByIsbn } from "../services/bookLookup";
+import { RefreshFieldsPicker } from "../components/RefreshFieldsPicker";
+import { ALL_REFRESH_FIELDS, buildBookFormFromMetadata, lookupBookByIsbn } from "../services/bookLookup";
+import type { RefreshFields } from "../services/bookLookup";
 import { normalizeIsbn } from "../services/isbn";
 import { BOOK_KINDS } from "../types";
 import type { Book, BookKind, BookStatus } from "../types";
@@ -59,6 +61,8 @@ export function BooksPage() {
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const { progress, refreshOne, refreshMany, cancel, dismiss } = useMetadataRefresh(updateBook);
   const refreshRunning = progress?.running === true;
+  const [refreshFields, setRefreshFields] = useState<RefreshFields>(ALL_REFRESH_FIELDS);
+  const noFieldSelected = !Object.values(refreshFields).some(Boolean);
 
   const exitSelectionMode = () => {
     setSelectionMode(false);
@@ -439,6 +443,9 @@ export function BooksPage() {
                   <span className="mr-auto text-indigo-900">
                     Select books to refresh ({checkedBooks.length} selected)
                   </span>
+                  <div className="w-full">
+                    <RefreshFieldsPicker value={refreshFields} onChange={setRefreshFields} />
+                  </div>
                   <button
                     type="button"
                     onClick={() => setCheckedIds(new Set(filteredBooks.map((book) => book.id)))}
@@ -448,11 +455,11 @@ export function BooksPage() {
                   </button>
                   <button
                     type="button"
-                    disabled={checkedBooks.length === 0}
+                    disabled={checkedBooks.length === 0 || noFieldSelected}
                     onClick={() => {
                       const targets = checkedBooks;
                       exitSelectionMode();
-                      void refreshMany(targets);
+                      void refreshMany(targets, refreshFields);
                     }}
                     className="rounded-full bg-indigo-600 px-3 py-1 font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
                   >
@@ -460,11 +467,11 @@ export function BooksPage() {
                   </button>
                   <button
                     type="button"
-                    disabled={missingCoverBooks.length === 0}
+                    disabled={missingCoverBooks.length === 0 || noFieldSelected}
                     onClick={() => {
                       const targets = missingCoverBooks;
                       exitSelectionMode();
-                      void refreshMany(targets);
+                      void refreshMany(targets, refreshFields);
                     }}
                     className="rounded-full bg-indigo-600 px-3 py-1 font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
                   >
@@ -726,6 +733,7 @@ export function BooksPage() {
         onClose={() => setSelectedId(null)}
         onNavigate={filteredBooks.length > 1 ? navigateSelected : undefined}
         onRefreshMetadata={refreshOne}
+        onEdit={(bookId, updates) => updateBook(bookId, updates)}
         onStatusChange={(bookId, next) => void updateBook(bookId, { status: next })}
         onRatingChange={(bookId, rating) => void updateBook(bookId, { rating })}
         onDelete={async (bookId) => {

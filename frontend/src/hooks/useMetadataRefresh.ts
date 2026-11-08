@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
-import { refreshBookMetadata } from "../services/bookLookup";
-import type { ProviderTrace, RefreshOutcome } from "../services/bookLookup";
+import { ALL_REFRESH_FIELDS, refreshBookMetadata } from "../services/bookLookup";
+import type { ProviderTrace, RefreshFields, RefreshOutcome } from "../services/bookLookup";
 import type { Book } from "../types";
 
 export interface ProviderStats {
@@ -40,9 +40,9 @@ export function useMetadataRefresh(updateBook: (id: string, updates: Partial<Boo
   const cancelRef = useRef(false);
 
   const refreshOne = useCallback(
-    async (book: Book): Promise<RefreshOneResult> => {
+    async (book: Book, fields: RefreshFields = ALL_REFRESH_FIELDS): Promise<RefreshOneResult> => {
       try {
-        const result = await refreshBookMetadata(book);
+        const result = await refreshBookMetadata(book, fields);
         if (result.outcome !== "updated" || !result.updates) {
           return { outcome: result.outcome, trace: result.trace };
         }
@@ -65,7 +65,7 @@ export function useMetadataRefresh(updateBook: (id: string, updates: Partial<Boo
   );
 
   const refreshMany = useCallback(
-    async (books: Book[]) => {
+    async (books: Book[], fields: RefreshFields = ALL_REFRESH_FIELDS) => {
       if (books.length === 0) return;
       cancelRef.current = false;
       const state: RefreshProgress = { total: books.length, done: 0, refreshed: 0, changed: 0, failed: 0, providers: {}, cancelled: false, running: true };
@@ -77,7 +77,7 @@ export function useMetadataRefresh(updateBook: (id: string, updates: Partial<Boo
       const worker = async () => {
         while (!cancelRef.current && next < books.length) {
           const book = books[next++];
-          const { outcome, trace } = await refreshOne(book);
+          const { outcome, trace } = await refreshOne(book, fields);
           for (const { name, status } of trace) {
             const stats = (state.providers[name] ??= { found: 0, notFound: 0, error: 0 });
             if (status === "found") stats.found += 1;
