@@ -5,7 +5,9 @@ import { isSavable, toBooks, useScanBatch } from "../hooks/useScanBatch";
 import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
 import { useLibraryData } from "../hooks/useLibraryData";
 import { useAuth } from "../auth/AuthContext";
+import { useI18n } from "../i18n/I18nContext";
 import { normalizeIsbn } from "../services/isbn";
+import { readShelf } from "../services/shelfReader";
 import { logScanFailure } from "../services/scanLogs";
 import { BOOK_KINDS, type BookKind } from "../types";
 
@@ -45,6 +47,7 @@ export function BatchScanPage() {
   const libraryIsbns = useMemo(() => books.map((b) => b.isbn), [books]);
   const batch = useScanBatch(libraryIsbns);
   const { isAdmin } = useAuth();
+  const { t } = useI18n();
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const [kind, setKind] = useState<BookKind>("Book");
@@ -60,6 +63,9 @@ export function BatchScanPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const toastTimer = useRef<number>();
+  const shelfInput = useRef<HTMLInputElement>(null);
+  const [shelfBusy, setShelfBusy] = useState(false);
+  const [shelfStatus, setShelfStatus] = useState("");
 
   const showToast = useCallback((next: Toast) => {
     window.clearTimeout(toastTimer.current);
@@ -95,6 +101,39 @@ export function BatchScanPage() {
     }
     handleIsbn(manualIsbn);
     setManualIsbn("");
+  };
+
+  const handleShelfPhotos = async (files: FileList | null) => {
+    if (!files || files.length === 0 || shelfBusy) return;
+    setShelfBusy(true);
+    setMessage("");
+    const totals = { added: 0, skipped: 0, ignored: 0 };
+    try {
+      for (const file of Array.from(files)) {
+        setShelfStatus(t("scan.shelf.reading"));
+        const spines = await readShelf(file);
+        for (const [index, spine] of spines.entries()) {
+          setShelfStatus(t("scan.shelf.matching", { done: index + 1, total: spines.length }));
+          const result = await batch.addDetected(spine, kindRef.current);
+          if (result === "added") totals.added += 1;
+          else if (result === "duplicate") totals.skipped += 1;
+          else totals.ignored += 1;
+        }
+      }
+      if (totals.added + totals.skipped === 0) {
+        setMessage(t("scan.shelf.none"));
+      } else {
+        showToast({ message: t("scan.shelf.done", totals) });
+        beep();
+      }
+    } catch (error) {
+      console.error(error);
+      setMessage(t("scan.shelf.failed", { error: error instanceof Error ? error.message : String(error) }));
+    } finally {
+      setShelfBusy(false);
+      setShelfStatus("");
+      if (shelfInput.current) shelfInput.current.value = "";
+    }
   };
 
   const handleRemove = (id: string) => {
@@ -230,6 +269,28 @@ export function BatchScanPage() {
               </button>
             </form>
           )}
+
+          <div className="mt-2">
+            <input
+              ref={shelfInput}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              multiple
+              hidden
+              data-testid="shelf-file-input"
+              onChange={(e) => void handleShelfPhotos(e.target.files)}
+            />
+            <button
+              type="button"
+              disabled={shelfBusy}
+              title={t("scan.shelf.hint")}
+              onClick={() => shelfInput.current?.click()}
+              className="w-full rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-800 disabled:opacity-60"
+            >
+              📷 {shelfBusy ? shelfStatus : t("scan.shelf.button")}
+            </button>
+          </div>
 
           {(message_ || scanner.hint) && (
             <p className={`mt-2 text-sm ${message_ ? "text-red-600" : "text-slate-500"}`}>{message_ || scanner.hint}</p>

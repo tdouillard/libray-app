@@ -3,6 +3,7 @@ import { lookupBookReport } from "../services/bookLookup";
 import type { ProviderTrace } from "../services/bookLookup";
 import { failureReason, logScanFailure, type ScanFailureReason } from "../services/scanLogs";
 import { normalizeIsbn } from "../services/isbn";
+import { findIsbnByText, spineLabel, type DetectedSpine } from "../services/shelfSearch";
 import type { Book, BookKind } from "../types";
 
 const STORAGE_KEY = "libray.scanBatch";
@@ -28,6 +29,10 @@ export interface ScannedBook {
   reason?: ScanFailureReason;
   /** What each catalogue answered, kept for the admin diagnostics. */
   trace?: ProviderTrace[];
+  /** Created from a shelf photo and not from a barcode. */
+  source?: "shelf";
+  /** The text read on the spine (shelf photos), kept so the user can check the match. */
+  detected?: string;
 }
 
 interface BatchState {
@@ -56,7 +61,7 @@ export function toBooks(items: ScannedBook[]): Book[] {
   return items.map((item) => ({
     id: crypto.randomUUID(),
     kind: item.kind,
-    title: item.title || `Unknown book (${item.isbn})`,
+    title: item.title || `Unknown book (${item.isbn || item.detected || "?"})`,
     author: item.author ?? "",
     isbn: item.isbn,
     year: item.year ?? 0,
@@ -110,6 +115,12 @@ export function useScanBatch(libraryIsbns: string[]) {
       const entry = [...stateRef.current.main, ...stateRef.current.rescan].find((b) => b.id === id);
       if (!entry) continue; // removed while waiting
 
+      if (!entry.isbn) {
+        // Shelf entry that no catalogue matched: there is no ISBN to look up again.
+        patch(id, { status: "notFound", reason: "not-found" });
+        continue;
+      }
+
       inFlightRef.current += 1;
       lookupBookReport(entry.isbn, { kind: entry.kind })
         .catch(() => null)
@@ -159,13 +170,14 @@ export function useScanBatch(libraryIsbns: string[]) {
   }, []);
 
   const add = useCallback(
-    (rawIsbn: string, kind: BookKind): AddResult => {
+    (rawIsbn: string, kind: BookKind, extra: Partial<ScannedBook> = {}): AddResult => {
       const isbn = normalizeIsbn(rawIsbn);
       if (!isbn) return "invalid";
       const { main, rescan } = stateRef.current;
       if ([...main, ...rescan].some((b) => b.isbn === isbn)) return "duplicate";
 
       const entry: ScannedBook = {
+        ...extra,
         id: crypto.randomUUID(),
         isbn,
         kind,
@@ -178,6 +190,39 @@ export function useScanBatch(libraryIsbns: string[]) {
       return "added";
     },
     [commit, enqueue]
+  );
+
+  /**
+   * Adds a spine read from a shelf photo. The text is turned into an ISBN (then the normal lookup fills in
+   * the rest). Without a match, a spine the reader trusts goes to the rescan list as "to verify"; raw
+   * unreliable text is dropped. A failing catalogue throws, so the caller can tell "unknown" from "offline".
+   */
+  const addDetected = useCallback(
+    async (spine: DetectedSpine, kind: BookKind): Promise<AddResult | "unmatched"> => {
+      const detected = spineLabel(spine);
+      const match = await findIsbnByText(spine);
+      if (match) return add(match.isbn, kind, { source: "shelf", detected });
+      if (!spine.reliable) return "unmatched";
+
+      const { main, rescan } = stateRef.current;
+      if ([...main, ...rescan].some((b) => b.source === "shelf" && b.detected === detected)) return "duplicate";
+      const entry: ScannedBook = {
+        id: crypto.randomUUID(),
+        isbn: "",
+        kind,
+        status: "notFound",
+        reason: "not-found",
+        owned: false,
+        confirmed: false,
+        title: detected,
+        author: spine.author,
+        source: "shelf",
+        detected,
+      };
+      commit({ main, rescan: [entry, ...rescan] });
+      return "added";
+    },
+    [add, commit]
   );
 
   const setKind = useCallback((id: string, kind: BookKind) => patch(id, { kind }), [patch]);
@@ -265,6 +310,7 @@ export function useScanBatch(libraryIsbns: string[]) {
     main: withOwned(stateRef.current.main),
     rescan: withOwned(stateRef.current.rescan),
     add,
+    addDetected,
     setKind,
     setAllKinds,
     toggleConfirmed,
