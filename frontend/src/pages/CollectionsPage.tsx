@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { displayTitle } from "../bookTitle";
 import { BookCover } from "../components/BookCover";
 import { CollectionCard } from "../components/CollectionCard";
 import { useLibraryData } from "../hooks/useLibraryData";
@@ -150,7 +151,7 @@ export function CollectionsPage() {
                   <BookCover book={book} variant="compact" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-slate-900">{book.title}</p>
+                  <p className="truncate text-sm font-semibold text-slate-900">{displayTitle(book)}</p>
                   <p className="text-xs text-slate-500">{book.author}</p>
                 </div>
                 <span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">

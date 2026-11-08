@@ -1,4 +1,5 @@
 import { STATUS_META } from "../bookStatus";
+import { displayTitle } from "../bookTitle";
 import type { Book } from "../types";
 import { BookCover } from "./BookCover";
 
@@ -36,7 +37,7 @@ export function BookRow({ book, onSelectBook, selectionMode = false, selected = 
         <BookCover book={book} variant="compact" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate font-semibold text-slate-900">{book.title}</p>
+        <p className="truncate font-semibold text-slate-900">{displayTitle(book)}</p>
         <p className="truncate text-sm text-slate-500">{book.author}</p>
       </div>
       <span className="hidden w-16 text-xs font-semibold uppercase tracking-wider text-slate-400 sm:block">

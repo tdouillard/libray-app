@@ -1,5 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { STATUS_META, STATUS_ORDER } from "../bookStatus";
+import { displayTitle } from "../bookTitle";
 import { useCoverColors } from "../hooks/useCoverColors";
 import {
   fallbackColor,
@@ -98,7 +99,7 @@ const Spine = memo(function Spine({ item, entering, selected, onSelect, onHover 
     <button
       ref={ref}
       type="button"
-      aria-label={`${book.title} by ${book.author}`}
+      aria-label={`${displayTitle(book)} by ${book.author}`}
       aria-pressed={selected || undefined}
       className={`sv-spine sv-${kind} ${selected ? "is-selected" : ""}`}
       style={{ width, height, backgroundColor: bg, ...spineVars(kind, color) }}
@@ -114,7 +115,7 @@ const Spine = memo(function Spine({ item, entering, selected, onSelect, onHover 
       {kind === "Book" && (
         <>
           <span className="sv-ln a" />
-          <em>{book.title}</em>
+          <em>{displayTitle(book)}</em>
           <span className="sv-ln d" />
         </>
       )}
@@ -288,7 +289,7 @@ export function ShelfView({ books, onSelectBook, checkedIds, animate = true }: S
             className="sw"
             style={{ backgroundColor: hsl(covers[hover.book.id] ?? fallbackColor(hover.book)) }}
           />
-          <b className="block text-[13px]">{hover.book.title}</b>
+          <b className="block text-[13px]">{displayTitle(hover.book)}</b>
           <div className="text-slate-500">{hover.book.author}</div>
           <span className="mt-1.5 inline-block rounded-full bg-slate-100 px-2 text-[11px] text-slate-700">
             {KIND_META[hover.book.kind].label} · {STATUS_META[hover.book.status].label}

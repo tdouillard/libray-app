@@ -45,6 +45,46 @@ export function joinNames(...lists: Array<string | undefined>): string {
   return names.join(", ");
 }
 
+/** "井上雄彦 (Takehiko Inoue)" -> "Takehiko Inoue" (native script followed by the romanised name). */
+export function cleanPersonName(name: string): string {
+  const match = name.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  const nonLatin = /[^\u0000-ɏ]/;
+  if (match && nonLatin.test(match[1]) && !nonLatin.test(match[2])) return match[2].trim();
+  return name.trim();
+}
+
+/**
+ * For BD / Manga the volume has its own field, so "Vagabond VIZBIG Edition, Vol. 7" keeps only the title
+ * ("Vagabond VIZBIG Edition"); a trailing "(French Edition)" store label goes too. Books are left alone
+ * ("Fahrenheit 451" is not volume 451).
+ */
+export function cleanVolumeTitle(title: string): string {
+  const cleaned = title
+    .replace(/[\s,:\-–]*\b(?:tome|vol(?:ume)?\.?|band|#)\s*\d+(?:[.,]\d+)?/i, "")
+    .replace(/\s*\([^)]*\b[ée]dition\)\s*$/i, "")
+    .replace(/[\s,:\-–]+$/, "")
+    .trim();
+  return cleaned || title;
+}
+
+const EDITION_WORDING =
+  /[\s,:\-–]*\(?\b(viz\s*big(?:\s+edition)?|(?:deluxe|perfect|collector'?s?|ultimate|omnibus|special|limited|anniversary|definitive|master|library|complete)\s+edition)\b\)?/i;
+
+/**
+ * Splits the edition wording off a title: "Vagabond VIZBIG Edition" -> { title: "Vagabond", edition: "VIZBIG Edition" }.
+ * The edition belongs in the editor collection, not in the title.
+ */
+export function extractEdition(title: string): { title: string; edition?: string } {
+  const match = title.match(EDITION_WORDING);
+  if (!match) return { title };
+  const rest = title.replace(EDITION_WORDING, "").replace(/[\s,:\-–]+$/, "").trim();
+  if (!rest) return { title };
+  const edition = /viz\s*big/i.test(match[1])
+    ? "VIZBIG Edition"
+    : match[1].replace(/\b\p{L}/gu, (letter) => letter.toUpperCase());
+  return { title: rest, edition };
+}
+
 /** "Monster - Tome 6 (Big Kana)" -> "6"; "Berserk, Vol. 3" -> "3"; "Naruto 12" -> "12". */
 export function extractVolume(title: string | undefined): string | undefined {
   if (!title) return undefined;
@@ -108,7 +148,7 @@ const openLibraryProvider: Provider = {
 
     return {
       title: book.subtitle ? `${book.title} - ${book.subtitle}` : book.title,
-      author: joinNames(...(book.authors?.map((author) => author.name) ?? [])) || undefined,
+      author: joinNames(...(book.authors?.map((author) => cleanPersonName(author.name ?? "")) ?? [])) || undefined,
       year: parseYear(book.publish_date),
       publisher: book.publishers?.[0]?.name,
       cover: toHttps(book.cover?.large ?? book.cover?.medium),
@@ -324,8 +364,20 @@ async function anilistFetch(search: string): Promise<Response> {
   }
 }
 
+/**
+ * Series name to search AniList with: no volume and no edition wording
+ * ("Vagabond VIZBIG Edition, Vol. 7" -> "Vagabond"; AniList finds nothing for the long form).
+ */
+export function seriesSearchKey(title: string): string {
+  const withoutVolume = stripVolume(title);
+  const withoutEdition = withoutVolume
+    .replace(/\s*[-–:,(]?\s*\b(?:viz\s*big|\S+\s+edition|[ée]dition|deluxe|int[ée]grale|omnibus|collector)\b.*$/i, "")
+    .trim();
+  return withoutEdition || withoutVolume;
+}
+
 async function enrichFromAniList(title: string): Promise<ProviderResult> {
-  const search = stripVolume(title);
+  const search = seriesSearchKey(title);
   if (!search) {
     return null;
   }
@@ -442,6 +494,12 @@ export async function lookupBookReport(rawIsbn: string, options: { kind?: BookKi
     const merged = mergeResults(settled);
     if (!merged) {
       return { result: null, trace };
+    }
+    // The volume was read from the raw title above; BD / Manga keep it in its own field only.
+    if (merged.title && options.kind && options.kind !== "Book") {
+      const { title, edition } = extractEdition(cleanVolumeTitle(merged.title));
+      merged.title = title;
+      merged.editorCollection ||= edition;
     }
 
     if (
@@ -576,6 +634,11 @@ export async function refreshBookMetadata(
       if (metadata.writer) updates.writer = metadata.writer;
       if (metadata.artist) updates.artist = metadata.artist;
       updates.author = joinNames(metadata.writer, metadata.artist);
+    } else if (kind !== "Book" && metadata.author && !metadata.author.includes(",")) {
+      // No creator roles (Open Library) and a single name: a lone author of a BD / manga wrote and drew it.
+      updates.writer = metadata.author;
+      updates.artist = metadata.author;
+      updates.author = metadata.author;
     } else if (metadata.author) {
       updates.author = metadata.author;
     }

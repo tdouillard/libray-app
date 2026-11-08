@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { bnfCreatorRole, extractVolume, inferKind, joinNames, parseBnfTitle, parseBnfUnimarc, refreshBookMetadata } from "./bookLookup";
+import { bnfCreatorRole, cleanPersonName, cleanVolumeTitle, extractEdition, extractVolume, seriesSearchKey, inferKind, joinNames, parseBnfTitle, parseBnfUnimarc, refreshBookMetadata } from "./bookLookup";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -48,6 +48,30 @@ describe("volume and creators", () => {
       editorCollection: "Big Kana",
       description: "Kujô est derrière les barreaux",
     });
+  });
+  it("drops the volume and store label from BD / Manga titles", () => {
+    expect(cleanVolumeTitle("Vagabond VIZBIG Edition, Vol. 7")).toBe("Vagabond VIZBIG Edition");
+    expect(cleanVolumeTitle("Monster Intégrale Deluxe - Tome 6 (Big Kana) (French Edition)")).toBe(
+      "Monster Intégrale Deluxe (Big Kana)"
+    );
+    expect(cleanVolumeTitle("Astérix, tome 3 : Astérix et les Goths")).toBe("Astérix : Astérix et les Goths");
+    expect(cleanVolumeTitle("Blacksad")).toBe("Blacksad");
+  });
+  it("moves the edition wording out of the title", () => {
+    expect(extractEdition("Vagabond VIZBIG Edition")).toEqual({ title: "Vagabond", edition: "VIZBIG Edition" });
+    expect(extractEdition("Berserk Deluxe Edition")).toEqual({ title: "Berserk", edition: "Deluxe Edition" });
+    expect(extractEdition("Monster Intégrale Deluxe")).toEqual({ title: "Monster Intégrale Deluxe" });
+    expect(extractEdition("Vagabond")).toEqual({ title: "Vagabond" });
+  });
+  it("keeps the romanised name of a native-script author", () => {
+    expect(cleanPersonName("井上雄彦 (Takehiko Inoue)")).toBe("Takehiko Inoue");
+    expect(cleanPersonName("Shōhei Manabe")).toBe("Shōhei Manabe");
+    expect(cleanPersonName("Hergé (Georges Remi)")).toBe("Hergé (Georges Remi)");
+  });
+  it("searches AniList with the bare series name", () => {
+    expect(seriesSearchKey("Vagabond VIZBIG Edition, Vol. 7")).toBe("Vagabond");
+    expect(seriesSearchKey("Monster Intégrale Deluxe - Tome 6")).toBe("Monster");
+    expect(seriesSearchKey("Berserk, Vol. 3")).toBe("Berserk");
   });
   it("dedupes names", () => {
     expect(joinNames("Naoki Urasawa, Naoki Urasawa", "Takashi Nagasaki")).toBe("Naoki Urasawa, Takashi Nagasaki");

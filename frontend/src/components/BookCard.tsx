@@ -1,4 +1,5 @@
 import { STATUS_META } from "../bookStatus";
+import { displayTitle } from "../bookTitle";
 import type { Book } from "../types";
 import { BookCover } from "./BookCover";
 
@@ -17,7 +18,7 @@ export function BookCard({ book, onSelectBook, selectionMode = false, selected =
     <button
       type="button"
       onClick={() => onSelectBook?.(book)}
-      aria-label={`${book.title} by ${book.author}`}
+      aria-label={`${displayTitle(book)} by ${book.author}`}
       aria-pressed={selectionMode ? selected : undefined}
       className="group flex h-full w-full flex-col items-stretch justify-start text-left focus:outline-none"
     >
@@ -48,7 +49,7 @@ export function BookCard({ book, onSelectBook, selectionMode = false, selected =
         </span>
       </div>
       {/* Fixed two-line title block so every author line starts at the same height. */}
-      <p className="mt-2 line-clamp-2 text-sm font-semibold leading-snug text-slate-900">{book.title}</p>
+      <p className="mt-2 line-clamp-2 text-sm font-semibold leading-snug text-slate-900">{displayTitle(book)}</p>
       <p className="truncate text-xs text-slate-500">{book.author}</p>
       {/* Status bar: a short tick that grows to full width on hover. */}
       <span
