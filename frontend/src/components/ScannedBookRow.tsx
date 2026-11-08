@@ -72,10 +72,21 @@ export function ScannedBookRow({
             </span>
           )}
         </p>
-        <p className="truncate text-xs text-slate-500">{book.author || `ISBN ${book.isbn}`}</p>
+        <p className="truncate text-xs text-slate-500">{book.author || (book.isbn ? `ISBN ${book.isbn}` : "")}</p>
+        {book.source === "shelf" && (
+          <p className="truncate text-[11px] text-indigo-700" data-testid="scan-detected">
+            📷 {t("scan.shelf.detected")}: “{book.detected}”
+          </p>
+        )}
         {notFound && (
           <p className="mt-0.5 text-xs text-amber-800" data-testid="scan-hint">
-            {t(book.reason === "error" ? "scan.hint.error" : "scan.hint.not-found")}
+            {t(
+              book.source === "shelf" && !book.isbn
+                ? "scan.shelf.unmatched"
+                : book.reason === "error"
+                  ? "scan.hint.error"
+                  : "scan.hint.not-found"
+            )}
           </p>
         )}
         {notFound && showDiagnostics && (
