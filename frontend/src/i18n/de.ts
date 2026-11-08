@@ -120,6 +120,7 @@ const de: Dictionary = {
   "scan.shelf.detected": "Auf dem Buchrücken gelesen",
   "scan.shelf.unmatched": "Auf dem Buchrücken gelesen, aber in keinem Katalog gefunden. Titel prüfen oder Barcode scannen.",
   "scan.shelf.reading": "Foto wird gelesen…",
+  "scan.shelf.analysing": "Buchrücken werden gelesen {done}/{total}…",
   "scan.shelf.matching": "Bücher werden erkannt {done}/{total}…",
   "scan.shelf.done": "{added} hinzugefügt, {skipped} bereits im Stapel, {ignored} nicht erkannt.",
   "scan.shelf.none": "Es konnte kein Titel gelesen werden. Versuchen Sie ein schärferes, besser beleuchtetes Foto aus der Nähe.",
