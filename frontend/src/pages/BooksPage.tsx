@@ -3,6 +3,7 @@ import { BarcodeScannerModal } from "../components/BarcodeScannerModal";
 import { BookCard } from "../components/BookCard";
 import { BookDetailModal } from "../components/BookDetailModal";
 import { BookRow } from "../components/BookRow";
+import { ShelfView } from "../components/ShelfView";
 import { STATUS_META, STATUS_ORDER } from "../bookStatus";
 import { useLibraryData } from "../hooks/useLibraryData";
 import { hasNoCover, useMetadataRefresh } from "../hooks/useMetadataRefresh";
@@ -16,7 +17,7 @@ import type { Book, BookKind, BookStatus } from "../types";
 type StatusFilter = "all" | BookStatus;
 type KindFilter = "all" | BookKind;
 type SortKey = "recent" | "title" | "author" | "rating";
-type ViewMode = "grid" | "list";
+type ViewMode = "grid" | "list" | "shelf";
 
 const VIEW_STORAGE_KEY = "library.books.view";
 
@@ -37,7 +38,8 @@ const inputClass =
 
 function readStoredView(): ViewMode {
   try {
-    return window.localStorage.getItem(VIEW_STORAGE_KEY) === "list" ? "list" : "grid";
+    const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
+    return stored === "list" || stored === "shelf" ? stored : "grid";
   } catch {
     return "grid";
   }
@@ -276,20 +278,23 @@ export function BooksPage() {
               </kbd>
             </div>
 
-            <select
-              value={sort}
-              onChange={(event) => setSort(event.target.value as SortKey)}
-              aria-label="Sort books"
-              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-indigo-400"
-            >
-              <option value="recent">Recently added</option>
-              <option value="title">Title A–Z</option>
-              <option value="author">Author A–Z</option>
-              <option value="rating">Rating</option>
-            </select>
+            {/* Shelves are always ordered by series then volume, like a real bookcase. */}
+            {view !== "shelf" && (
+              <select
+                value={sort}
+                onChange={(event) => setSort(event.target.value as SortKey)}
+                aria-label="Sort books"
+                className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-indigo-400"
+              >
+                <option value="recent">Recently added</option>
+                <option value="title">Title A–Z</option>
+                <option value="author">Author A–Z</option>
+                <option value="rating">Rating</option>
+              </select>
+            )}
 
             <div className="flex rounded-full border border-slate-200 bg-white p-0.5" role="group" aria-label="View">
-              {(["grid", "list"] as const).map((mode) => (
+              {(["grid", "list", "shelf"] as const).map((mode) => (
                 <button
                   key={mode}
                   type="button"
@@ -299,7 +304,7 @@ export function BooksPage() {
                   title={`${mode} view`}
                   className={`rounded-full px-3 py-1.5 text-sm ${view === mode ? "bg-slate-900 text-white" : "text-slate-500"}`}
                 >
-                  {mode === "grid" ? "▦" : "☰"}
+                  {mode === "grid" ? "▦" : mode === "list" ? "☰" : "📚"}
                 </button>
               ))}
             </div>
@@ -539,6 +544,8 @@ export function BooksPage() {
                 </button>
               )}
             </div>
+          ) : view === "shelf" ? (
+            <ShelfView books={filteredBooks} onSelectBook={handleBookClick} checkedIds={checkedIds} />
           ) : view === "grid" ? (
             <div className="grid grid-cols-2 gap-x-4 gap-y-7 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {filteredBooks.map((book) => (
