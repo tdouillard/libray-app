@@ -2,9 +2,11 @@ import type { RefreshFields } from "../services/bookLookup";
 
 const OPTIONS: Array<{ key: keyof RefreshFields; label: string }> = [
   { key: "title", label: "Title" },
+  { key: "originalTitle", label: "Original title" },
   { key: "author", label: "Author" },
   { key: "volume", label: "Volume" },
   { key: "publisher", label: "Editor" },
+  { key: "editorCollection", label: "Collection" },
   { key: "cover", label: "Cover" },
   { key: "category", label: "Category" },
 ];

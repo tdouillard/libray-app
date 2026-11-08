@@ -25,6 +25,8 @@ export interface ScannedBook {
   artist?: string;
   volume?: string;
   publisher?: string;
+  editorCollection?: string;
+  originalTitle?: string;
   description?: string;
   year?: number;
   cover?: string;
@@ -71,6 +73,8 @@ export function toBooks(items: ScannedBook[]): Book[] {
     artist: item.kind === "Book" ? "" : item.artist ?? "",
     volume: item.volume ?? "",
     publisher: item.publisher ?? "",
+    editorCollection: item.editorCollection ?? "",
+    originalTitle: item.originalTitle ?? "",
     isbn: item.isbn,
     year: item.year ?? 0,
     status: "owned",
@@ -145,6 +149,8 @@ export function useScanBatch(libraryIsbns: string[]) {
               artist: meta.artist,
               volume: meta.volume,
               publisher: meta.publisher,
+              editorCollection: meta.editorCollection,
+              originalTitle: meta.originalTitle,
               description: meta.description,
               year: meta.year,
               cover: meta.cover,

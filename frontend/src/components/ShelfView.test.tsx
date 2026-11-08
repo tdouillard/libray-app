@@ -13,6 +13,8 @@ function makeBook(overrides: Partial<Book>): Book {
     artist: "",
     volume: "",
     publisher: "",
+    editorCollection: "",
+    originalTitle: "",
     isbn: "",
     year: 2000,
     status: "owned",

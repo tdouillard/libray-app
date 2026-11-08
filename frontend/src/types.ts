@@ -17,6 +17,10 @@ export interface Book {
   volume: string;
   /** Editor / publisher. */
   publisher: string;
+  /** Imprint / series line of the editor ("Big Kana"). */
+  editorCollection: string;
+  /** Title in the original language, romanised for manga ("Kujou no Taizai"). */
+  originalTitle: string;
   isbn: string;
   year: number;
   status: BookStatus;

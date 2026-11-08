@@ -22,7 +22,13 @@ const TRAILING_NUMBER = /^(.*\D)\s+(\d{1,3})$/;
  * Splits "Berserk 12", "Astérix, tome 3", "Naruto Vol. 7", "Tintin T5" into series + volume.
  * A bare trailing number is only trusted for BD / Manga (a novel like "Fahrenheit 451" is not volume 451).
  */
-export function parseSeries(title: string, kind: BookKind): SeriesInfo {
+export function parseSeries(title: string, kind: BookKind, volumeField?: string): SeriesInfo {
+  const parsed = parseSeriesFromTitle(title, kind);
+  // The stored volume wins over a number guessed from the title.
+  return /^\d{1,3}$/.test(volumeField?.trim() ?? "") ? { ...parsed, volume: Number(volumeField) } : parsed;
+}
+
+function parseSeriesFromTitle(title: string, kind: BookKind): SeriesInfo {
   const clean = title.trim();
   const explicit = EXPLICIT_VOLUME.exec(clean);
   if (explicit && explicit[1].trim()) return { series: explicit[1].trim(), volume: Number(explicit[2]) };

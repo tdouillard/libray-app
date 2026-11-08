@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { bnfCreatorRole, extractVolume, inferKind, joinNames, refreshBookMetadata } from "./bookLookup";
+import { bnfCreatorRole, extractVolume, inferKind, joinNames, parseBnfTitle, parseBnfUnimarc, refreshBookMetadata } from "./bookLookup";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -28,6 +28,26 @@ describe("volume and creators", () => {
     expect(bnfCreatorRole("Nagasaki, Takashi. Scénariste")).toBe("writer");
     expect(bnfCreatorRole("Uderzo, Albert (1927-2020). Dessinateur")).toBe("artist");
     expect(bnfCreatorRole("Urasawa, Naoki (1960-....). Auteur")).toBe("author");
+  });
+  it("keeps only the title from a BnF title statement", () => {
+    expect(parseBnfTitle("Kujô l'implacable. 10 / Shôhei Manabe")).toEqual({ title: "Kujô l'implacable", volume: "10" });
+    expect(parseBnfTitle("Monster. 6, Intégrale deluxe / Naoki Urasawa")).toEqual({
+      title: "Monster - Intégrale deluxe",
+      volume: "6",
+    });
+    expect(parseBnfTitle("Blacksad / Juan Díaz Canales")).toEqual({ title: "Blacksad" });
+  });
+  it("reads original title and collection from a BnF UNIMARC record", () => {
+    const xml = `<r xmlns:mxc="urn:x">
+      <mxc:datafield tag="225" ind1="|" ind2=" "><mxc:subfield code="a">Big Kana</mxc:subfield></mxc:datafield>
+      <mxc:datafield tag="330" ind1=" " ind2=" "><mxc:subfield code="a">Kujô est derrière les barreaux</mxc:subfield></mxc:datafield>
+      <mxc:datafield tag="454" ind1=" " ind2="1"><mxc:subfield code="t">Kujo no taizai</mxc:subfield><mxc:subfield code="h">Vol. 10</mxc:subfield></mxc:datafield>
+    </r>`;
+    expect(parseBnfUnimarc(xml)).toEqual({
+      originalTitle: "Kujo no taizai",
+      editorCollection: "Big Kana",
+      description: "Kujô est derrière les barreaux",
+    });
   });
   it("dedupes names", () => {
     expect(joinNames("Naoki Urasawa, Naoki Urasawa", "Takashi Nagasaki")).toBe("Naoki Urasawa, Takashi Nagasaki");
@@ -81,7 +101,7 @@ describe("refreshBookMetadata fields", () => {
 
   it("skips unchecked fields", async () => {
     stubCatalogue();
-    const { updates } = await refreshBookMetadata(book, { title: false, author: true, cover: false, category: false, volume: false, publisher: false });
+    const { updates } = await refreshBookMetadata(book, { title: false, author: true, cover: false, category: false, volume: false, publisher: false, editorCollection: false, originalTitle: false });
     expect(updates).toMatchObject({ author: "New Author" });
     expect(updates).not.toHaveProperty("title");
     expect(updates).not.toHaveProperty("cover");

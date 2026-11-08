@@ -11,6 +11,8 @@ interface BookRow {
   artist?: string;
   volume?: string;
   publisher?: string;
+  editor_collection?: string;
+  original_title?: string;
   year: number;
   status: BookStatus;
   description: string;
@@ -39,6 +41,8 @@ const toBook = (r: BookRow): Book => ({
   artist: r.artist ?? "",
   volume: r.volume ?? "",
   publisher: r.publisher ?? "",
+  editorCollection: r.editor_collection ?? "",
+  originalTitle: r.original_title ?? "",
   year: r.year,
   status: r.status,
   description: r.description,
@@ -67,6 +71,8 @@ const bookColumns = (b: Partial<Book>) => {
     artist: b.artist,
     volume: b.volume,
     publisher: b.publisher,
+    editor_collection: b.editorCollection,
+    original_title: b.originalTitle,
     year: b.year,
     status: b.status,
     description: b.description,

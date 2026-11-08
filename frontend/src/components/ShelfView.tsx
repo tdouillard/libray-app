@@ -166,7 +166,7 @@ export function ShelfView({ books, onSelectBook, checkedIds, animate = true }: S
         const items: ShelfBook[] = books
           .filter((book) => book.kind === kind)
           .map((book) => {
-            const { series, volume } = parseSeries(book.title, kind);
+            const { series, volume } = parseSeries(book.title, kind, book.volume);
             return { book, series, volume, ...spineGeometry(book), color: covers[book.id] ?? fallbackColor(book) };
           })
           .sort(sortShelf);

@@ -19,6 +19,10 @@ export interface LookupResult {
   /** Illustrator (BD / Manga), same condition as `writer`. */
   artist?: string;
   volume?: string;
+  /** Title in the original language (romanised for manga). */
+  originalTitle?: string;
+  /** Imprint / series line of the editor ("Big Kana"). */
+  editorCollection?: string;
   description?: string;
   year?: number;
   cover?: string;
@@ -135,6 +139,18 @@ export function bnfCreatorRole(raw: string): "writer" | "artist" | "author" {
   return "author";
 }
 
+/**
+ * BnF titles are the full catalogue statement: "Title. Part number, Part title / Statement of responsibility".
+ * "Kujô l'implacable. 10 / Shôhei Manabe" -> { title: "Kujô l'implacable", volume: "10" }
+ */
+export function parseBnfTitle(raw: string): { title: string; volume?: string } {
+  const withoutResponsibility = raw.replace(/\s+\/\s+.*$/, "").replace(/[\s.]+$/, "").trim();
+  const part = withoutResponsibility.match(/^(.*?)\.\s+(\d+(?:[.,]\d+)?)(?:\s*[,:]\s*(.+))?$/);
+  if (!part || !part[1].trim()) return { title: withoutResponsibility };
+  const base = part[1].trim();
+  return { title: part[3] ? `${base} - ${part[3].trim()}` : base, volume: part[2].replace(",", ".") };
+}
+
 function parseBnfRecord(xml: string): ProviderResult {
   const doc = new DOMParser().parseFromString(xml, "text/xml");
   const values = (tag: string) =>
@@ -142,7 +158,8 @@ function parseBnfRecord(xml: string): ProviderResult {
       .map((node) => node.textContent?.normalize("NFC").trim() ?? "")
       .filter(Boolean);
 
-  const title = values("title")[0];
+  const parsedTitle = parseBnfTitle(values("title")[0] ?? "");
+  const title = parsedTitle.title;
   const permalink = values("identifier").find((id) => /^https?:\/\/catalogue\.bnf\.fr\/ark:/.test(id));
   if (!title) {
     return null;
@@ -168,11 +185,36 @@ function parseBnfRecord(xml: string): ProviderResult {
     author: creators.join(", ") || undefined,
     writer,
     artist,
-    volume: extractVolume(title),
+    volume: parsedTitle.volume ?? extractVolume(title),
     year: parseYear(values("date")[0]),
     publisher,
+    editorCollection: collection,
     tags: collection ? [collection] : undefined,
     url: permalink ? toHttps(permalink) : undefined,
+  };
+}
+
+/**
+ * The UNIMARC record carries what Dublin Core drops: the original title (454 "translation of"),
+ * the collection (225 / 410) and the publisher's blurb (330).
+ */
+export function parseBnfUnimarc(xml: string): Pick<LookupResult, "originalTitle" | "editorCollection" | "description"> {
+  const doc = new DOMParser().parseFromString(xml, "text/xml");
+  const fields = Array.from(doc.getElementsByTagNameNS("*", "datafield"));
+  const sub = (tag: string, code: string) =>
+    fields
+      .filter((field) => field.getAttribute("tag") === tag)
+      .flatMap((field) =>
+        Array.from(field.getElementsByTagNameNS("*", "subfield"))
+          .filter((node) => node.getAttribute("code") === code)
+          .map((node) => node.textContent?.normalize("NFC").trim() ?? "")
+      )
+      .filter(Boolean);
+
+  return {
+    originalTitle: sub("454", "t")[0],
+    editorCollection: sub("225", "a")[0] ?? sub("410", "t")[0],
+    description: sub("330", "a")[0],
   };
 }
 
@@ -180,14 +222,30 @@ const bnfProvider: Provider = {
   name: "BnF",
   async run(isbn, signal) {
     const query = encodeURIComponent(`bib.isbn adj "${isbn}"`);
-    const response = await fetch(
-      `https://catalogue.bnf.fr/api/SRU?version=1.2&operation=searchRetrieve&query=${query}&recordSchema=dublincore&maximumRecords=1`,
-      { signal }
-    );
+    const request = (schema: string) =>
+      fetch(
+        `https://catalogue.bnf.fr/api/SRU?version=1.2&operation=searchRetrieve&query=${query}&recordSchema=${schema}&maximumRecords=1`,
+        { signal }
+      );
+
+    // The UNIMARC request only adds details: if it fails, the Dublin Core answer is still used.
+    const [response, extras] = await Promise.all([
+      request("dublincore"),
+      request("unimarcxchange")
+        .then(async (r) => (r.ok ? parseBnfUnimarc(await r.text()) : null))
+        .catch(() => null),
+    ]);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    return parseBnfRecord(await response.text());
+    const record = parseBnfRecord(await response.text());
+    if (!record || !extras) return record;
+    return {
+      ...record,
+      originalTitle: extras.originalTitle,
+      editorCollection: record.editorCollection ?? extras.editorCollection,
+      description: extras.description,
+    };
   },
 };
 
@@ -202,7 +260,15 @@ export function stripVolume(title: string): string {
 }
 
 interface AniListResponse {
-  data?: { Media?: { description?: string | null; genres?: string[]; startDate?: { year?: number | null }; siteUrl?: string | null } | null };
+  data?: {
+    Media?: {
+      description?: string | null;
+      genres?: string[];
+      startDate?: { year?: number | null };
+      siteUrl?: string | null;
+      title?: { romaji?: string | null } | null;
+    } | null;
+  };
 }
 
 /**
@@ -210,22 +276,61 @@ interface AniListResponse {
  * used to fill a missing description/tags for manga. It never provides the cover (that would be the
  * series cover, not the volume's).
  */
-async function enrichFromAniList(title: string, signal: AbortSignal): Promise<ProviderResult> {
+/**
+ * AniList allows ~30 requests/minute (and answers 429 without CORS headers beyond that), while a library
+ * refresh runs several lookups in parallel. All AniList calls therefore go through one spaced queue.
+ */
+const ANILIST_GAP_MS = 2200;
+const ANILIST_TIMEOUT_MS = 10000;
+let anilistQueue: Promise<unknown> = Promise.resolve();
+let anilistNextAt = 0;
+
+function anilistSlot(): Promise<void> {
+  const slot = anilistQueue.then(async () => {
+    const wait = anilistNextAt - Date.now();
+    if (wait > 0) await new Promise((resolve) => window.setTimeout(resolve, wait));
+    anilistNextAt = Date.now() + ANILIST_GAP_MS;
+  });
+  anilistQueue = slot;
+  return slot;
+}
+
+async function anilistFetch(search: string): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    await anilistSlot();
+    // Own timeout: the shared catalogue timer may already be spent when this runs.
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), ANILIST_TIMEOUT_MS);
+    try {
+      const response = await fetch("https://graphql.anilist.co", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          query:
+            "query($search:String){Media(search:$search,type:MANGA){description(asHtml:false) genres startDate{year} siteUrl title{romaji}}}",
+          variables: { search },
+        }),
+        signal: controller.signal,
+      });
+      if (response.status === 429 && attempt < 2) {
+        const retryAfter = Number(response.headers.get("Retry-After"));
+        anilistNextAt = Date.now() + (Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 60000);
+        continue;
+      }
+      return response;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+}
+
+async function enrichFromAniList(title: string): Promise<ProviderResult> {
   const search = stripVolume(title);
   if (!search) {
     return null;
   }
 
-  const response = await fetch("https://graphql.anilist.co", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({
-      query:
-        "query($search:String){Media(search:$search,type:MANGA){description(asHtml:false) genres startDate{year} siteUrl}}",
-      variables: { search },
-    }),
-    signal,
-  });
+  const response = await anilistFetch(search);
   if (!response.ok) {
     if (response.status === 404) {
       return null; // AniList answers 404 when nothing matches
@@ -243,7 +348,12 @@ async function enrichFromAniList(title: string, signal: AbortSignal): Promise<Pr
     .replace(/<[^>]+>/g, "")
     .trim();
 
-  return { description: description || undefined, tags: media.genres?.slice(0, 4), url: media.siteUrl ?? undefined };
+  return {
+    description: description || undefined,
+    tags: media.genres?.slice(0, 4),
+    originalTitle: media.title?.romaji ?? undefined,
+    url: media.siteUrl ?? undefined,
+  };
 }
 
 /* ------------------------------------------------------------------ cover fallback */
@@ -275,6 +385,8 @@ function mergeResults(results: Array<{ name: string; value: ProviderResult }>): 
     writer: pick("writer"),
     artist: pick("artist"),
     volume: pick("volume") ?? extractVolume(pick("title")),
+    originalTitle: pick("originalTitle"),
+    editorCollection: pick("editorCollection"),
     description: pick("description"),
     year: pick("year"),
     cover: pick("cover"),
@@ -332,12 +444,18 @@ export async function lookupBookReport(rawIsbn: string, options: { kind?: BookKi
       return { result: null, trace };
     }
 
-    if (options.kind === "Manga" && merged.title && (!merged.description || !merged.tags?.length)) {
+    if (
+      options.kind === "Manga" &&
+      merged.title &&
+      (!merged.description || !merged.tags?.length || !merged.originalTitle)
+    ) {
       try {
-        const extra = await enrichFromAniList(merged.title, controller.signal);
-        const useful = Boolean(extra && (extra.description || extra.tags?.length));
+        // The original title is a better search key than the French one when the catalogue gave it.
+        const extra = await enrichFromAniList(merged.originalTitle ?? merged.title);
+        const useful = Boolean(extra && (extra.description || extra.tags?.length || extra.originalTitle));
         if (extra && useful) {
           merged.description ||= extra.description;
+          merged.originalTitle ||= extra.originalTitle;
           if (!merged.tags?.length) merged.tags = extra.tags;
           merged.sources = [...(merged.sources ?? []), "AniList"];
         }
@@ -379,6 +497,8 @@ export interface RefreshFields {
   category: boolean;
   volume: boolean;
   publisher: boolean;
+  editorCollection: boolean;
+  originalTitle: boolean;
 }
 export const ALL_REFRESH_FIELDS: RefreshFields = {
   title: true,
@@ -387,6 +507,8 @@ export const ALL_REFRESH_FIELDS: RefreshFields = {
   category: true,
   volume: true,
   publisher: true,
+  editorCollection: true,
+  originalTitle: true,
 };
 
 const MANGA_HINT = /(?<![\p{L}\d])(manga|manhwa|manhua|shonen|shōnen|seinen|shojo|shōjo|josei|light novel|kana|ki-oon|kurokawa|pika|doki-doki|meian|akata|kazé|kaze|taifu|tonkam)(?![\p{L}\d])/iu;
@@ -444,6 +566,8 @@ export async function refreshBookMetadata(
   }
   if (fields.volume && metadata.volume) updates.volume = metadata.volume;
   if (fields.publisher && metadata.publisher) updates.publisher = metadata.publisher;
+  if (fields.editorCollection && metadata.editorCollection) updates.editorCollection = metadata.editorCollection;
+  if (fields.originalTitle && metadata.originalTitle) updates.originalTitle = metadata.originalTitle;
 
   if (fields.author) {
     const kind = updates.kind ?? book.kind;
@@ -480,6 +604,8 @@ export function buildBookFormFromMetadata(
     artist: metadata.artist || current.artist || "",
     volume: metadata.volume || current.volume || "",
     publisher: metadata.publisher || current.publisher || "",
+    editorCollection: metadata.editorCollection || current.editorCollection || "",
+    originalTitle: metadata.originalTitle || current.originalTitle || "",
     description: metadata.description || current.description || "",
     year: metadata.year || current.year || new Date().getFullYear(),
     cover: metadata.cover || current.cover || "",

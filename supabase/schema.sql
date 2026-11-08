@@ -25,6 +25,8 @@ alter table public.books add column if not exists writer text not null default '
 alter table public.books add column if not exists artist text not null default '';
 alter table public.books add column if not exists volume text not null default '';
 alter table public.books add column if not exists publisher text not null default '';
+alter table public.books add column if not exists editor_collection text not null default '';
+alter table public.books add column if not exists original_title text not null default '';
 create index if not exists books_user_idx on public.books (user_id);
 
 create table if not exists public.collections (

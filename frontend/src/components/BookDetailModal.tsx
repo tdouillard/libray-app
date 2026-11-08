@@ -65,6 +65,8 @@ function DetailDialog({
     artist: "",
     volume: "",
     publisher: "",
+    editorCollection: "",
+    originalTitle: "",
     kind: "Book" as BookKind,
     cover: "",
   });
@@ -78,6 +80,8 @@ function DetailDialog({
       artist: book.artist,
       volume: book.volume,
       publisher: book.publisher,
+      editorCollection: book.editorCollection,
+      originalTitle: book.originalTitle,
       kind: book.kind,
       cover: book.cover,
     });
@@ -97,6 +101,8 @@ function DetailDialog({
       artist,
       volume: draft.volume.trim(),
       publisher: draft.publisher.trim(),
+      editorCollection: draft.editorCollection.trim(),
+      originalTitle: draft.originalTitle.trim(),
       kind: draft.kind,
       cover: draft.cover.trim(),
     };
@@ -255,6 +261,14 @@ function DetailDialog({
                     className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
                   />
                 </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Original title
+                  <input
+                    value={draft.originalTitle}
+                    onChange={(event) => setDraft({ ...draft, originalTitle: event.target.value })}
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
+                  />
+                </label>
                 {draft.kind === "Book" ? (
                   <label className="block text-sm font-medium text-slate-700">
                     Author
@@ -304,6 +318,14 @@ function DetailDialog({
                   </label>
                 </div>
                 <label className="block text-sm font-medium text-slate-700">
+                  Editor collection
+                  <input
+                    value={draft.editorCollection}
+                    onChange={(event) => setDraft({ ...draft, editorCollection: event.target.value })}
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
                   Category
                   <select
                     value={draft.kind}
@@ -352,6 +374,9 @@ function DetailDialog({
                 <h2 id="book-detail-title" className="mt-1 text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
                   {book.title}
                 </h2>
+                {book.originalTitle && book.originalTitle !== book.title && (
+                  <p className="mt-0.5 text-sm italic text-slate-500">{book.originalTitle}</p>
+                )}
                 {book.kind !== "Book" && (book.writer || book.artist) ? (
                   <p className="mt-1 text-slate-600">
                     {book.writer && (
@@ -369,11 +394,15 @@ function DetailDialog({
                 ) : (
                   <p className="mt-1 text-slate-600">{book.author}</p>
                 )}
-                {(book.volume || book.publisher) && (
+                {(book.volume || book.publisher || book.editorCollection) && (
                   <p className="mt-1 text-sm text-slate-500">
-                    {book.volume && <span>Vol. {book.volume}</span>}
-                    {book.volume && book.publisher && <span className="px-1.5 text-slate-300">·</span>}
-                    {book.publisher && <span>{book.publisher}</span>}
+                    {[
+                      book.volume && `Vol. ${book.volume}`,
+                      book.publisher,
+                      book.editorCollection && `${book.editorCollection} collection`,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </p>
                 )}
                 {onEdit && (

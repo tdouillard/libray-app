@@ -88,7 +88,8 @@ describe("lookupBookByIsbn", () => {
       cover: "https://covers.openlibrary.org/b/id/1-L.jpg",
       sources: ["Open Library", "BnF"],
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Open Library + BnF (Dublin Core for the record, UNIMARC for original title / collection).
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("returns null when no provider knows the book", async () => {
