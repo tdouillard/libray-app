@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { STATUS_META, STATUS_ORDER } from "../bookStatus";
-import { ALL_REFRESH_FIELDS } from "../services/bookLookup";
+import { ALL_REFRESH_FIELDS, joinNames } from "../services/bookLookup";
 import type { RefreshFields, RefreshOutcome } from "../services/bookLookup";
 import type { RefreshOneResult } from "../hooks/useMetadataRefresh";
 import { BOOK_KINDS } from "../types";
@@ -19,7 +19,7 @@ interface BookDetailModalProps {
   onNavigate?: (direction: -1 | 1) => void;
   /** Re-fetches title, cover, etc. from the online catalogues. */
   onRefreshMetadata?: (book: Book, fields: RefreshFields) => Promise<RefreshOneResult>;
-  /** Saves manual edits (title, author, category, cover). */
+  /** Saves manual edits (title, authors, volume, editor, category, cover). */
   onEdit?: (bookId: string, updates: Partial<Book>) => Promise<void> | void;
 }
 
@@ -58,18 +58,45 @@ function DetailDialog({
   const [showRefreshOptions, setShowRefreshOptions] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [draft, setDraft] = useState({ title: "", author: "", kind: "Book" as BookKind, cover: "" });
+  const [draft, setDraft] = useState({
+    title: "",
+    author: "",
+    writer: "",
+    artist: "",
+    volume: "",
+    publisher: "",
+    kind: "Book" as BookKind,
+    cover: "",
+  });
 
   const startEditing = () => {
-    setDraft({ title: book.title, author: book.author, kind: book.kind, cover: book.cover });
+    setDraft({
+      title: book.title,
+      author: book.author,
+      // Items saved before the split only have a combined author: offer it as the writer.
+      writer: book.writer || (book.artist ? "" : book.author),
+      artist: book.artist,
+      volume: book.volume,
+      publisher: book.publisher,
+      kind: book.kind,
+      cover: book.cover,
+    });
     setEditing(true);
   };
 
   const saveEdit = async () => {
     if (!onEdit || saving) return;
+    const split = draft.kind !== "Book";
+    const writer = split ? draft.writer.trim() : "";
+    const artist = split ? draft.artist.trim() : "";
     const next = {
       title: draft.title.trim() || book.title, // a book can't end up without a title
-      author: draft.author.trim(),
+      // BD / Manga: the combined line is derived so search, sorting and shelves keep working.
+      author: split ? joinNames(writer, artist) : draft.author.trim(),
+      writer,
+      artist,
+      volume: draft.volume.trim(),
+      publisher: draft.publisher.trim(),
       kind: draft.kind,
       cover: draft.cover.trim(),
     };
@@ -228,14 +255,54 @@ function DetailDialog({
                     className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
                   />
                 </label>
-                <label className="block text-sm font-medium text-slate-700">
-                  Author
-                  <input
-                    value={draft.author}
-                    onChange={(event) => setDraft({ ...draft, author: event.target.value })}
-                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
-                  />
-                </label>
+                {draft.kind === "Book" ? (
+                  <label className="block text-sm font-medium text-slate-700">
+                    Author
+                    <input
+                      value={draft.author}
+                      onChange={(event) => setDraft({ ...draft, author: event.target.value })}
+                      className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
+                    />
+                  </label>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block text-sm font-medium text-slate-700">
+                      Writer
+                      <input
+                        value={draft.writer}
+                        onChange={(event) => setDraft({ ...draft, writer: event.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
+                      />
+                    </label>
+                    <label className="block text-sm font-medium text-slate-700">
+                      Artist
+                      <input
+                        value={draft.artist}
+                        onChange={(event) => setDraft({ ...draft, artist: event.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
+                      />
+                    </label>
+                  </div>
+                )}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Volume
+                    <input
+                      value={draft.volume}
+                      onChange={(event) => setDraft({ ...draft, volume: event.target.value })}
+                      placeholder="e.g. 6"
+                      className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
+                    />
+                  </label>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Editor
+                    <input
+                      value={draft.publisher}
+                      onChange={(event) => setDraft({ ...draft, publisher: event.target.value })}
+                      className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
+                    />
+                  </label>
+                </div>
                 <label className="block text-sm font-medium text-slate-700">
                   Category
                   <select
@@ -285,14 +352,37 @@ function DetailDialog({
                 <h2 id="book-detail-title" className="mt-1 text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
                   {book.title}
                 </h2>
-                <p className="mt-1 text-slate-600">{book.author}</p>
+                {book.kind !== "Book" && (book.writer || book.artist) ? (
+                  <p className="mt-1 text-slate-600">
+                    {book.writer && (
+                      <span>
+                        <span className="text-slate-400">Writer</span> {book.writer}
+                      </span>
+                    )}
+                    {book.writer && book.artist && <span className="px-1.5 text-slate-300">·</span>}
+                    {book.artist && (
+                      <span>
+                        <span className="text-slate-400">Artist</span> {book.artist}
+                      </span>
+                    )}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-slate-600">{book.author}</p>
+                )}
+                {(book.volume || book.publisher) && (
+                  <p className="mt-1 text-sm text-slate-500">
+                    {book.volume && <span>Vol. {book.volume}</span>}
+                    {book.volume && book.publisher && <span className="px-1.5 text-slate-300">·</span>}
+                    {book.publisher && <span>{book.publisher}</span>}
+                  </p>
+                )}
                 {onEdit && (
                   <button
                     type="button"
                     onClick={startEditing}
                     className="mt-2 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
                   >
-                    ✎ Edit title, author, category, cover
+                    ✎ Edit details
                   </button>
                 )}
               </div>

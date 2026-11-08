@@ -21,6 +21,10 @@ export interface ScannedBook {
   confirmed: boolean;
   title?: string;
   author?: string;
+  writer?: string;
+  artist?: string;
+  volume?: string;
+  publisher?: string;
   description?: string;
   year?: number;
   cover?: string;
@@ -63,6 +67,10 @@ export function toBooks(items: ScannedBook[]): Book[] {
     kind: item.kind,
     title: item.title || `Unknown book (${item.isbn || item.detected || "?"})`,
     author: item.author ?? "",
+    writer: item.kind === "Book" ? "" : item.writer ?? "",
+    artist: item.kind === "Book" ? "" : item.artist ?? "",
+    volume: item.volume ?? "",
+    publisher: item.publisher ?? "",
     isbn: item.isbn,
     year: item.year ?? 0,
     status: "owned",
@@ -133,6 +141,10 @@ export function useScanBatch(libraryIsbns: string[]) {
               status: "found",
               title: meta.title,
               author: meta.author,
+              writer: meta.writer,
+              artist: meta.artist,
+              volume: meta.volume,
+              publisher: meta.publisher,
               description: meta.description,
               year: meta.year,
               cover: meta.cover,

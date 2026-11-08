@@ -14,12 +14,40 @@ import { normalizeIsbn } from "./isbn";
 export interface LookupResult {
   title?: string;
   author?: string;
+  /** Story author (BD / Manga), only known when the catalogue gives creator roles (BnF). */
+  writer?: string;
+  /** Illustrator (BD / Manga), same condition as `writer`. */
+  artist?: string;
+  volume?: string;
   description?: string;
   year?: number;
   cover?: string;
   tags?: string[];
   publisher?: string;
   sources?: string[];
+}
+
+/** Joins names, dropping blanks and duplicates ("A, A, B" -> "A, B"). */
+export function joinNames(...lists: Array<string | undefined>): string {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const name of lists.flatMap((list) => (list ?? "").split(/,\s*/))) {
+    const clean = name.trim();
+    if (clean && !seen.has(clean.toLowerCase())) {
+      seen.add(clean.toLowerCase());
+      names.push(clean);
+    }
+  }
+  return names.join(", ");
+}
+
+/** "Monster - Tome 6 (Big Kana)" -> "6"; "Berserk, Vol. 3" -> "3"; "Naruto 12" -> "12". */
+export function extractVolume(title: string | undefined): string | undefined {
+  if (!title) return undefined;
+  const explicit = title.match(/\b(?:tome|vol(?:ume)?\.?|band|n°|no\.?|#)\s*(\d+(?:[.,]\d+)?)/i);
+  if (explicit) return explicit[1].replace(",", ".");
+  const trailing = title.match(/[\s,:\-–]+(\d{1,3})\s*$/);
+  return trailing ? trailing[1] : undefined;
 }
 
 /** `url` points at the record that was found, so the UI can link to it. */
@@ -76,10 +104,7 @@ const openLibraryProvider: Provider = {
 
     return {
       title: book.subtitle ? `${book.title} - ${book.subtitle}` : book.title,
-      author: book.authors
-        ?.map((author) => author.name)
-        .filter(Boolean)
-        .join(", "),
+      author: joinNames(...(book.authors?.map((author) => author.name) ?? [])) || undefined,
       year: parseYear(book.publish_date),
       publisher: book.publishers?.[0]?.name,
       cover: toHttps(book.cover?.large ?? book.cover?.medium),
@@ -102,6 +127,14 @@ export function cleanBnfCreator(raw: string): string {
   return first ? `${first} ${last}`.trim() : withoutDates;
 }
 
+/** Writer / artist roles of a BnF creator ("Nagasaki, Takashi. Scénariste" -> writer). Unknown or missing = "author". */
+export function bnfCreatorRole(raw: string): "writer" | "artist" | "author" {
+  const role = raw.match(/\.\s*([A-ZÀ-Ý][^.()]*)$/)?.[1]?.toLowerCase() ?? "";
+  if (/(dessin|illustr|artiste)/.test(role)) return "artist";
+  if (/(sc[ée]nari|texte)/.test(role)) return "writer";
+  return "author";
+}
+
 function parseBnfRecord(xml: string): ProviderResult {
   const doc = new DOMParser().parseFromString(xml, "text/xml");
   const values = (tag: string) =>
@@ -115,7 +148,15 @@ function parseBnfRecord(xml: string): ProviderResult {
     return null;
   }
 
-  const creators = Array.from(new Set(values("creator").map(cleanBnfCreator).filter(Boolean)));
+  const rawCreators = values("creator");
+  const creators = Array.from(new Set(rawCreators.map(cleanBnfCreator).filter(Boolean)));
+  const byRole = (role: "writer" | "artist" | "author") =>
+    joinNames(...rawCreators.filter((raw) => bnfCreatorRole(raw) === role).map(cleanBnfCreator));
+  // A plain "Auteur" wrote the story, and also drew it unless an illustrator is credited (typical of manga).
+  const plain = byRole("author");
+  const explicitArtist = byRole("artist");
+  const writer = joinNames(plain, byRole("writer")) || undefined;
+  const artist = explicitArtist || plain || undefined;
   const publisher = values("publisher")[0]?.replace(/\s*\([^)]*\)\s*$/, "");
   const collection = values("description")
     .find((text) => text.startsWith("Collection :"))
@@ -125,6 +166,9 @@ function parseBnfRecord(xml: string): ProviderResult {
   return {
     title,
     author: creators.join(", ") || undefined,
+    writer,
+    artist,
+    volume: extractVolume(title),
     year: parseYear(values("date")[0]),
     publisher,
     tags: collection ? [collection] : undefined,
@@ -228,6 +272,9 @@ function mergeResults(results: Array<{ name: string; value: ProviderResult }>): 
   return {
     title: pick("title"),
     author: pick("author"),
+    writer: pick("writer"),
+    artist: pick("artist"),
+    volume: pick("volume") ?? extractVolume(pick("title")),
     description: pick("description"),
     year: pick("year"),
     cover: pick("cover"),
@@ -326,11 +373,21 @@ const PLACEHOLDER_DESCRIPTION = "A newly added title to your library.";
 /** Fields a refresh may overwrite. Year, description and tags keep their existing safe rules. */
 export interface RefreshFields {
   title: boolean;
+  /** Author, plus writer / artist for BD and Manga. */
   author: boolean;
   cover: boolean;
   category: boolean;
+  volume: boolean;
+  publisher: boolean;
 }
-export const ALL_REFRESH_FIELDS: RefreshFields = { title: true, author: true, cover: true, category: true };
+export const ALL_REFRESH_FIELDS: RefreshFields = {
+  title: true,
+  author: true,
+  cover: true,
+  category: true,
+  volume: true,
+  publisher: true,
+};
 
 const MANGA_HINT = /(?<![\p{L}\d])(manga|manhwa|manhua|shonen|shōnen|seinen|shojo|shōjo|josei|light novel|kana|ki-oon|kurokawa|pika|doki-doki|meian|akata|kazé|kaze|taifu|tonkam)(?![\p{L}\d])/iu;
 const BD_HINT = /(?<![\p{L}\d])(bandes? dessinées?|comics?|graphic novels?|bd|cartoons?|comic strips?|dargaud|dupuis|lombard|casterman|futuropolis|urban comics|spirou|tintin)(?![\p{L}\d])/iu;
@@ -379,12 +436,25 @@ export async function refreshBookMetadata(
 
   const updates: Partial<Book> = {};
   if (fields.title && metadata.title) updates.title = metadata.title;
-  if (fields.author && metadata.author) updates.author = metadata.author;
   if (metadata.year) updates.year = metadata.year;
   if (fields.cover && metadata.cover) updates.cover = metadata.cover;
   if (fields.category) {
     const kind = inferKind(metadata);
     if (kind) updates.kind = kind;
+  }
+  if (fields.volume && metadata.volume) updates.volume = metadata.volume;
+  if (fields.publisher && metadata.publisher) updates.publisher = metadata.publisher;
+
+  if (fields.author) {
+    const kind = updates.kind ?? book.kind;
+    if (kind !== "Book" && (metadata.writer || metadata.artist)) {
+      // BD / Manga: keep story and drawing apart; `author` stays the combined display line.
+      if (metadata.writer) updates.writer = metadata.writer;
+      if (metadata.artist) updates.artist = metadata.artist;
+      updates.author = joinNames(metadata.writer, metadata.artist);
+    } else if (metadata.author) {
+      updates.author = metadata.author;
+    }
   }
 
   if (metadata.description && (!book.description || book.description === PLACEHOLDER_DESCRIPTION)) {
@@ -406,6 +476,10 @@ export function buildBookFormFromMetadata(
     ...current,
     title: metadata.title || current.title || "",
     author: metadata.author || current.author || "",
+    writer: metadata.writer || current.writer || "",
+    artist: metadata.artist || current.artist || "",
+    volume: metadata.volume || current.volume || "",
+    publisher: metadata.publisher || current.publisher || "",
     description: metadata.description || current.description || "",
     year: metadata.year || current.year || new Date().getFullYear(),
     cover: metadata.cover || current.cover || "",

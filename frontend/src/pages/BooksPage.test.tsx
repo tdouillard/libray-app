@@ -17,7 +17,7 @@ vi.mock("../hooks/useLibraryData", () => ({
 }));
 
 vi.mock("../services/bookLookup", () => ({
-  ALL_REFRESH_FIELDS: { title: true, author: true, cover: true, category: true },
+  ALL_REFRESH_FIELDS: { title: true, author: true, cover: true, category: true, volume: true, publisher: true },
   lookupBookByIsbn: (isbn: string) => lookupBookByIsbnMock(isbn),
   buildBookFormFromMetadata: (metadata: Record<string, unknown>, current: Record<string, unknown>) => ({
     ...current,

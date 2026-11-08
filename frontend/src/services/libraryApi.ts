@@ -7,6 +7,10 @@ interface BookRow {
   isbn: string;
   title: string;
   author: string;
+  writer?: string;
+  artist?: string;
+  volume?: string;
+  publisher?: string;
   year: number;
   status: BookStatus;
   description: string;
@@ -31,6 +35,10 @@ const toBook = (r: BookRow): Book => ({
   isbn: r.isbn,
   title: r.title,
   author: r.author,
+  writer: r.writer ?? "",
+  artist: r.artist ?? "",
+  volume: r.volume ?? "",
+  publisher: r.publisher ?? "",
   year: r.year,
   status: r.status,
   description: r.description,
@@ -55,6 +63,10 @@ const bookColumns = (b: Partial<Book>) => {
     isbn: b.isbn,
     title: b.title,
     author: b.author,
+    writer: b.writer,
+    artist: b.artist,
+    volume: b.volume,
+    publisher: b.publisher,
     year: b.year,
     status: b.status,
     description: b.description,

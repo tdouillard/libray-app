@@ -25,6 +25,10 @@ const initialForm: Omit<Book, "id" | "rating" | "collectionIds"> = {
   kind: "Book",
   title: "",
   author: "",
+  writer: "",
+  artist: "",
+  volume: "",
+  publisher: "",
   isbn: "",
   year: new Date().getFullYear(),
   status: "owned",
@@ -192,6 +196,7 @@ export function BooksPage() {
     setSelectedId(filteredBooks[(index + direction + filteredBooks.length) % filteredBooks.length].id);
   };
 
+  const allSelected = bookList.length > 0 && checkedIds.size === bookList.length;
   const missingCoverBooks = useMemo(() => bookList.filter(hasNoCover), [bookList]);
   const checkedBooks = useMemo(() => bookList.filter((book) => checkedIds.has(book.id)), [bookList, checkedIds]);
 
@@ -226,6 +231,10 @@ export function BooksPage() {
       kind: formValues.kind,
       title: formValues.title,
       author: formValues.author,
+      writer: formValues.kind === "Book" ? "" : formValues.writer,
+      artist: formValues.kind === "Book" ? "" : formValues.artist,
+      volume: formValues.volume,
+      publisher: formValues.publisher,
       isbn: formValues.isbn,
       year: formValues.year,
       status: formValues.status,
@@ -453,11 +462,30 @@ export function BooksPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setCheckedIds(new Set(filteredBooks.map((book) => book.id)))}
-                    className="rounded-full border border-indigo-300 px-3 py-1 font-semibold text-indigo-700 hover:bg-indigo-100"
+                    onClick={() => setCheckedIds(new Set(bookList.map((book) => book.id)))}
+                    disabled={allSelected}
+                    className="rounded-full border border-indigo-300 px-3 py-1 font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
                   >
-                    Select all shown
+                    Select all ({bookList.length})
                   </button>
+                  {filteredBooks.length !== bookList.length && (
+                    <button
+                      type="button"
+                      onClick={() => setCheckedIds(new Set(filteredBooks.map((book) => book.id)))}
+                      className="rounded-full border border-indigo-300 px-3 py-1 font-semibold text-indigo-700 hover:bg-indigo-100"
+                    >
+                      Select all shown ({filteredBooks.length})
+                    </button>
+                  )}
+                  {checkedBooks.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setCheckedIds(new Set())}
+                      className="rounded-full px-3 py-1 font-semibold text-indigo-700 hover:bg-indigo-100"
+                    >
+                      Clear selection
+                    </button>
+                  )}
                   <button
                     type="button"
                     disabled={checkedBooks.length === 0 || noFieldSelected}

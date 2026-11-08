@@ -20,6 +20,11 @@ create table if not exists public.books (
 alter table public.books add column if not exists kind text not null default 'Book';
 alter table public.books drop constraint if exists books_kind_check;
 alter table public.books add constraint books_kind_check check (kind in ('Book', 'BD', 'Manga'));
+-- Detail fields: volume, editor, and the writer / artist split used for BD and Manga.
+alter table public.books add column if not exists writer text not null default '';
+alter table public.books add column if not exists artist text not null default '';
+alter table public.books add column if not exists volume text not null default '';
+alter table public.books add column if not exists publisher text not null default '';
 create index if not exists books_user_idx on public.books (user_id);
 
 create table if not exists public.collections (

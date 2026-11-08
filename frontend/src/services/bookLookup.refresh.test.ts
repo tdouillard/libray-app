@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { inferKind, refreshBookMetadata } from "./bookLookup";
+import { bnfCreatorRole, extractVolume, inferKind, joinNames, refreshBookMetadata } from "./bookLookup";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -14,6 +14,23 @@ describe("inferKind", () => {
   it("stays undefined when inconclusive and ignores partial words", () => {
     expect(inferKind({ title: "Takana story", tags: ["Fiction"] })).toBeUndefined();
     expect(inferKind({})).toBeUndefined();
+  });
+});
+
+describe("volume and creators", () => {
+  it("extracts the volume from a title", () => {
+    expect(extractVolume("Monster Intégrale Deluxe - Tome 6 (Big Kana)")).toBe("6");
+    expect(extractVolume("Berserk, Vol. 3")).toBe("3");
+    expect(extractVolume("Naruto 12")).toBe("12");
+    expect(extractVolume("Dune")).toBeUndefined();
+  });
+  it("reads BnF creator roles", () => {
+    expect(bnfCreatorRole("Nagasaki, Takashi. Scénariste")).toBe("writer");
+    expect(bnfCreatorRole("Uderzo, Albert (1927-2020). Dessinateur")).toBe("artist");
+    expect(bnfCreatorRole("Urasawa, Naoki (1960-....). Auteur")).toBe("author");
+  });
+  it("dedupes names", () => {
+    expect(joinNames("Naoki Urasawa, Naoki Urasawa", "Takashi Nagasaki")).toBe("Naoki Urasawa, Takashi Nagasaki");
   });
 });
 
@@ -45,9 +62,26 @@ describe("refreshBookMetadata fields", () => {
     expect(updates).toMatchObject({ title: "New title", author: "New Author", cover: "https://img/c.jpg", kind: "Manga" });
   });
 
+  it("fills volume and editor from the catalogue", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.includes("openlibrary.org/api")
+          ? new Response(
+              JSON.stringify({
+                "ISBN:9782723492638": { title: "Monster - Tome 6", cover: { large: "https://img/c.jpg" }, publishers: [{ name: "Kana" }], authors: [{ name: "Naoki Urasawa" }] },
+              })
+            )
+          : new Response("", { status: 404 })
+      )
+    );
+    const { updates } = await refreshBookMetadata(book);
+    expect(updates).toMatchObject({ volume: "6", publisher: "Kana", author: "Naoki Urasawa" });
+  });
+
   it("skips unchecked fields", async () => {
     stubCatalogue();
-    const { updates } = await refreshBookMetadata(book, { title: false, author: true, cover: false, category: false });
+    const { updates } = await refreshBookMetadata(book, { title: false, author: true, cover: false, category: false, volume: false, publisher: false });
     expect(updates).toMatchObject({ author: "New Author" });
     expect(updates).not.toHaveProperty("title");
     expect(updates).not.toHaveProperty("cover");
