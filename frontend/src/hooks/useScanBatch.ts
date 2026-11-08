@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
-import { lookupBookByIsbn } from "../services/bookLookup";
+import { lookupBookReport } from "../services/bookLookup";
+import type { ProviderTrace } from "../services/bookLookup";
+import { failureReason, logScanFailure, type ScanFailureReason } from "../services/scanLogs";
 import { normalizeIsbn } from "../services/isbn";
 import type { Book, BookKind } from "../types";
 
@@ -22,6 +24,10 @@ export interface ScannedBook {
   year?: number;
   cover?: string;
   tags?: string[];
+  /** Why the lookup failed (only when status is "notFound"). */
+  reason?: ScanFailureReason;
+  /** What each catalogue answered, kept for the admin diagnostics. */
+  trace?: ProviderTrace[];
 }
 
 interface BatchState {
@@ -105,25 +111,30 @@ export function useScanBatch(libraryIsbns: string[]) {
       if (!entry) continue; // removed while waiting
 
       inFlightRef.current += 1;
-      lookupBookByIsbn(entry.isbn, { kind: entry.kind })
+      lookupBookReport(entry.isbn, { kind: entry.kind })
         .catch(() => null)
-        .then((meta) => {
+        .then((report) => {
           const still = [...stateRef.current.main, ...stateRef.current.rescan].some((b) => b.id === id);
           if (!still) return;
-          patch(
-            id,
-            meta
-              ? {
-                  status: "found",
-                  title: meta.title,
-                  author: meta.author,
-                  description: meta.description,
-                  year: meta.year,
-                  cover: meta.cover,
-                  tags: meta.tags,
-                }
-              : { status: "notFound" }
-          );
+          const meta = report?.result;
+          if (meta) {
+            patch(id, {
+              status: "found",
+              title: meta.title,
+              author: meta.author,
+              description: meta.description,
+              year: meta.year,
+              cover: meta.cover,
+              tags: meta.tags,
+              reason: undefined,
+              trace: undefined,
+            });
+            return;
+          }
+          const trace = report?.trace ?? [];
+          const reason = failureReason(report ? trace : undefined);
+          patch(id, { status: "notFound", reason, trace });
+          logScanFailure({ isbn: entry.isbn, kind: entry.kind, reason, trace });
         })
         .finally(() => {
           inFlightRef.current -= 1;

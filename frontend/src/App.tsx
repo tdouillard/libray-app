@@ -4,6 +4,7 @@ import { BooksPage } from "./pages/BooksPage";
 import { BatchScanPage } from "./pages/BatchScanPage";
 import { CollectionsPage } from "./pages/CollectionsPage";
 import { AccountPage } from "./pages/AccountPage";
+import { AdminScanLogsPage } from "./pages/AdminScanLogsPage";
 import { ProfileMenu } from "./components/ProfileMenu";
 import { I18nProvider, useI18n } from "./i18n/I18nContext";
 import { useLanguageSync } from "./auth/useLanguage";
@@ -86,6 +87,7 @@ function Shell() {
               <Route path="/scan" element={<BatchScanPage />} />
               <Route path="/collections" element={<CollectionsPage />} />
               <Route path="/account" element={<AccountPage />} />
+              <Route path="/admin/scan-logs" element={<AdminScanLogsPage />} />
             </Routes>
           </main>
         </div>

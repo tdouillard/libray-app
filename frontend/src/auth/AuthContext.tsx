@@ -1,10 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase, type SupabaseUser } from "../services/supabase";
 import { avatarPath } from "../services/avatar";
+import { fetchIsAdmin } from "../services/scanLogs";
 
 interface AuthValue {
   user: SupabaseUser | null;
   ready: boolean;
+  /* Listed in public.admins: unlocks the scan diagnostics. Only a convenience, the database enforces access. */
+  isAdmin: boolean;
   /* True while the user arrived from a password reset email and still has to choose a new password. */
   recovering: boolean;
   displayName: string;
@@ -38,6 +41,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [ready, setReady] = useState(false);
   const [recovering, setRecovering] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  const userId = user?.id;
+  useEffect(() => {
+    let cancelled = false;
+    setIsAdmin(false);
+    if (userId) void fetchIsAdmin().then((admin) => !cancelled && setIsAdmin(admin));
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,11 +152,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const parts = displayName.split(/[._\-+\s]+/).filter(Boolean);
     const initials = (parts.length > 1 ? parts[0][0] + parts[1][0] : displayName.slice(0, 2) || "?").toUpperCase();
     return {
-      user, ready, recovering, displayName, initials,
+      user, ready, isAdmin, recovering, displayName, initials,
       signIn, signOut, saveProfile, saveLanguage, requestEmailCode, changeEmail, sendResetLink, completeRecovery, skipRecovery,
       signOutOthers, uploadAvatar, removeAvatar, avatarUrl, deleteAccount,
     };
-  }, [user, ready, recovering, signIn, signOut, saveProfile, saveLanguage, requestEmailCode, changeEmail, sendResetLink, completeRecovery, skipRecovery,
+  }, [user, ready, isAdmin, recovering, signIn, signOut, saveProfile, saveLanguage, requestEmailCode, changeEmail, sendResetLink, completeRecovery, skipRecovery,
       signOutOthers, uploadAvatar, removeAvatar, avatarUrl, deleteAccount]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

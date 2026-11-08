@@ -9,7 +9,7 @@ import { Avatar } from "./Avatar";
 
 /* Avatar button with a dropdown: who is signed in, language, settings and sign out (same menu as expense-split). */
 export function ProfileMenu() {
-  const { user, displayName, signOut } = useAuth();
+  const { user, displayName, signOut, isAdmin } = useAuth();
   const { lang, languages, t } = useI18n();
   const changeLanguage = useChangeLanguage();
   const { theme, toggle: toggleTheme } = useTheme();
@@ -107,6 +107,16 @@ export function ProfileMenu() {
           >
             {t("menu.settings")}
           </Link>
+          {isAdmin && (
+            <Link
+              role="menuitem"
+              to="/admin/scan-logs"
+              onClick={() => setOpen(false)}
+              className="block rounded-xl px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+            >
+              {t("admin.menu")}
+            </Link>
+          )}
           <button
             type="button"
             role="menuitem"

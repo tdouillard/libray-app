@@ -1,4 +1,5 @@
 import type { ScannedBook } from "../hooks/useScanBatch";
+import { useI18n } from "../i18n/I18nContext";
 import { BOOK_KINDS, type BookKind } from "../types";
 
 const kindStyles: Record<BookKind, string> = {
@@ -16,10 +17,12 @@ interface ScannedBookRowProps {
   onMoveBack: (id: string) => void;
   onRelookup: (id: string) => void;
   onRemove: (id: string) => void;
+  /** Admins see which catalogue answered what (the same data is saved in the scan log). */
+  showDiagnostics?: boolean;
 }
 
 const iconButton =
-  "flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-base transition hover:bg-slate-50 active:scale-95";
+  "flex h-9 w-9 shrink-0 items-center sm:h-10 sm:w-10 justify-center rounded-xl border border-slate-200 bg-white text-base transition hover:bg-slate-50 active:scale-95";
 
 export function ScannedBookRow({
   book,
@@ -30,7 +33,9 @@ export function ScannedBookRow({
   onMoveBack,
   onRelookup,
   onRemove,
+  showDiagnostics = false,
 }: ScannedBookRowProps) {
+  const { t } = useI18n();
   const loading = book.status === "loading";
   const notFound = book.status === "notFound";
   const nextKind = BOOK_KINDS[(BOOK_KINDS.indexOf(book.kind) + 1) % BOOK_KINDS.length];
@@ -42,7 +47,7 @@ export function ScannedBookRow({
       : "border-slate-100 bg-white";
 
   return (
-    <li className={`flex items-center gap-3 rounded-2xl border p-2 ${tone}`} data-testid="scanned-row">
+    <li className={`flex min-w-0 items-center gap-2 rounded-2xl border p-2 sm:gap-3 ${tone}`} data-testid="scanned-row">
       {loading ? (
         <div className="h-[60px] w-[42px] shrink-0 animate-pulse rounded bg-slate-200" />
       ) : book.cover ? (
@@ -54,7 +59,7 @@ export function ScannedBookRow({
       )}
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-slate-900">
+        <p className="line-clamp-2 break-words text-sm font-semibold text-slate-900">
           {loading ? "Looking up…" : book.title || "Unknown book"}
           {book.owned && (
             <span className="ml-1.5 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-800">
@@ -63,11 +68,35 @@ export function ScannedBookRow({
           )}
           {notFound && (
             <span className="ml-1.5 rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
-              Not found
+              {t("scan.notFound")}
             </span>
           )}
         </p>
         <p className="truncate text-xs text-slate-500">{book.author || `ISBN ${book.isbn}`}</p>
+        {notFound && (
+          <p className="mt-0.5 text-xs text-amber-800" data-testid="scan-hint">
+            {t(book.reason === "error" ? "scan.hint.error" : "scan.hint.not-found")}
+          </p>
+        )}
+        {notFound && showDiagnostics && (
+          <details className="mt-1 text-xs text-slate-600" data-testid="scan-diagnostics">
+            <summary className="cursor-pointer font-semibold text-indigo-700">{t("scan.diag.toggle")}</summary>
+            <p className="mt-1 font-semibold">{t("scan.diag.sources")}</p>
+            {book.trace && book.trace.length > 0 ? (
+              <ul className="space-y-0.5">
+                {book.trace.map((entry) => (
+                  <li key={entry.name} className="flex justify-between gap-3">
+                    <span>{entry.name}</span>
+                    <span className={entry.status === "error" ? "font-bold text-red-600" : ""}>{t(`scan.diag.${entry.status}`)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>{t("scan.diag.none")}</p>
+            )}
+            <p className="mt-1 text-slate-400">{t("scan.diag.logged")}</p>
+          </details>
+        )}
         <button
           type="button"
           onClick={() => onCycleKind(book.id, nextKind)}

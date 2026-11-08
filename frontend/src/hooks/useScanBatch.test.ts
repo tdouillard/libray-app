@@ -2,7 +2,11 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { isSavable, toBooks, useScanBatch } from "./useScanBatch";
 
 const lookupMock = vi.fn();
-vi.mock("../services/bookLookup", () => ({ lookupBookByIsbn: (isbn: string) => lookupMock(isbn) }));
+vi.mock("../services/bookLookup", () => ({ lookupBookReport: (isbn: string) => lookupMock(isbn) }));
+vi.mock("../services/scanLogs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/scanLogs")>()),
+  logScanFailure: vi.fn(),
+}));
 
 const ISBN_A = "9782344059487";
 const ISBN_B = "9780306406157";
@@ -11,7 +15,7 @@ describe("useScanBatch", () => {
   beforeEach(() => {
     localStorage.clear();
     lookupMock.mockReset();
-    lookupMock.mockResolvedValue({ title: "Goetz", author: "Fane", cover: "c.jpg" });
+    lookupMock.mockResolvedValue({ result: { title: "Goetz", author: "Fane", cover: "c.jpg" }, trace: [] });
   });
 
   it("adds a row immediately and fills it from the lookup", async () => {
@@ -27,7 +31,7 @@ describe("useScanBatch", () => {
   });
 
   it("keeps a row when nothing is found, and rejects invalid or repeated codes", async () => {
-    lookupMock.mockResolvedValue(null);
+    lookupMock.mockResolvedValue({ result: null, trace: [{ name: "Open Library", status: "not-found" }] });
     const { result } = renderHook(() => useScanBatch([]));
 
     act(() => {
@@ -36,6 +40,7 @@ describe("useScanBatch", () => {
       expect(result.current.add(ISBN_A, "Book")).toBe("duplicate");
     });
     await waitFor(() => expect(result.current.main[0].status).toBe("notFound"));
+    expect(result.current.main[0]).toMatchObject({ reason: "not-found", trace: [{ name: "Open Library", status: "not-found" }] });
     expect(result.current.main).toHaveLength(1);
     expect(isSavable(result.current.main[0])).toBe(true);
   });
@@ -97,7 +102,7 @@ describe("useScanBatch", () => {
       peak = Math.max(peak, running);
       await new Promise((r) => setTimeout(r, 20));
       running -= 1;
-      return { title: "x" };
+      return { result: { title: "x" }, trace: [] };
     });
     const isbns = ["9782344059487", "9780306406157", "9780140328721", "9780747532699", "9780439023528"];
     const { result } = renderHook(() => useScanBatch([]));

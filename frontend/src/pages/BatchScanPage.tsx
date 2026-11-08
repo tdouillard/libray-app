@@ -4,7 +4,9 @@ import { ScannedBookRow } from "../components/ScannedBookRow";
 import { isSavable, toBooks, useScanBatch } from "../hooks/useScanBatch";
 import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
 import { useLibraryData } from "../hooks/useLibraryData";
+import { useAuth } from "../auth/AuthContext";
 import { normalizeIsbn } from "../services/isbn";
+import { logScanFailure } from "../services/scanLogs";
 import { BOOK_KINDS, type BookKind } from "../types";
 
 const kindLabels: Record<BookKind, string> = { Book: "📖 Book", BD: "🎨 BD", Manga: "🈶 Manga" };
@@ -42,6 +44,7 @@ export function BatchScanPage() {
   const { books, addBooks } = useLibraryData();
   const libraryIsbns = useMemo(() => books.map((b) => b.isbn), [books]);
   const batch = useScanBatch(libraryIsbns);
+  const { isAdmin } = useAuth();
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const [kind, setKind] = useState<BookKind>("Book");
@@ -87,6 +90,7 @@ export function BatchScanPage() {
     event.preventDefault();
     if (!normalizeIsbn(manualIsbn)) {
       setMessage("This is not a valid ISBN (check the digits printed under the barcode).");
+      logScanFailure({ isbn: manualIsbn.trim(), kind: kindRef.current, reason: "invalid" });
       return;
     }
     handleIsbn(manualIsbn);
@@ -149,7 +153,7 @@ export function BatchScanPage() {
     return (
       <ul className="space-y-2">
         {list.map((book) => (
-          <ScannedBookRow key={book.id} book={book} variant={variant} {...rowProps} />
+          <ScannedBookRow key={book.id} book={book} variant={variant} showDiagnostics={isAdmin} {...rowProps} />
         ))}
       </ul>
     );
@@ -161,9 +165,9 @@ export function BatchScanPage() {
     }`;
 
   return (
-    <div className="pb-24">
-      <div className="grid gap-4 lg:grid-cols-[380px_1fr] lg:items-start">
-        <div className="sticky top-0 z-10 -mx-4 bg-slate-100 px-4 pb-2 pt-1 sm:mx-0 sm:px-0 lg:top-4">
+    <div className="w-full max-w-full overflow-x-hidden pb-24">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[380px_minmax(0,1fr)] lg:items-start">
+        <div className="sticky top-0 z-10 -mx-4 min-w-0 bg-slate-100 px-4 pb-2 pt-1 sm:mx-0 sm:px-0 lg:top-4">
           <div className="relative h-56 overflow-hidden rounded-3xl bg-slate-900 sm:h-64">
             <video ref={videoRef} className="h-full w-full object-cover" playsInline muted autoPlay />
             <div
@@ -180,12 +184,12 @@ export function BatchScanPage() {
             <span className="absolute right-3 top-3 rounded-full bg-white px-2.5 py-0.5 text-xs font-bold text-slate-900">
               {batch.main.length + batch.rescan.length} scanned
             </span>
-            <div className="absolute inset-x-0 bottom-0 flex justify-between gap-2 bg-gradient-to-t from-black/70 to-transparent p-3">
+            <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-between gap-2 bg-gradient-to-t from-black/70 to-transparent p-2 sm:p-3">
               {scanner.torchAvailable ? (
                 <button
                   type="button"
                   onClick={() => void scanner.toggleTorch()}
-                  className="rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-sm text-white"
+                  className="rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-xs text-white sm:text-sm"
                 >
                   {scanner.torchOn ? "🔦 Off" : "🔦 Light"}
                 </button>
@@ -196,14 +200,14 @@ export function BatchScanPage() {
                 <button
                   type="button"
                   onClick={scanner.restart}
-                  className="rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-sm text-white"
+                  className="whitespace-nowrap rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-xs text-white sm:text-sm"
                 >
-                  Restart camera
+                  Restart
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowManual((v) => !v)}
-                  className="rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-sm text-white"
+                  className="whitespace-nowrap rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-xs text-white sm:text-sm"
                 >
                   ⌨ Type ISBN
                 </button>
@@ -231,15 +235,15 @@ export function BatchScanPage() {
             <p className={`mt-2 text-sm ${message_ ? "text-red-600" : "text-slate-500"}`}>{message_ || scanner.hint}</p>
           )}
 
-          <div className="mt-2 flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1">
-            <span className="px-2 text-xs font-semibold text-slate-500">New scans:</span>
+          <div className="mt-2 flex flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1">
+            <span className="basis-full px-2 text-xs font-semibold text-slate-500 sm:basis-auto">New scans:</span>
             {BOOK_KINDS.map((k) => (
               <button
                 key={k}
                 type="button"
                 aria-pressed={kind === k}
                 onClick={() => setKind(k)}
-                className={`flex-1 rounded-xl px-2 py-2 text-sm font-bold transition ${
+                className={`min-w-0 flex-1 whitespace-nowrap rounded-xl px-1 py-2 text-xs font-bold transition sm:px-2 sm:text-sm ${
                   kind === k ? kindActive[k] : "text-slate-600"
                 }`}
               >
@@ -253,14 +257,14 @@ export function BatchScanPage() {
                 batch.setAllKinds(kind);
                 showToast({ message: `All set to ${kind}` });
               }}
-              className="rounded-xl border border-dashed border-slate-400 bg-slate-50 px-2 py-2 text-xs text-slate-700"
+              className="whitespace-nowrap rounded-xl border border-dashed border-slate-400 bg-slate-50 px-2 py-2 text-xs text-slate-700"
             >
               Apply to all
             </button>
           </div>
         </div>
 
-        <div>
+        <div className="min-w-0">
           <div className="flex rounded-full border border-slate-200 bg-white p-1 lg:hidden" role="tablist">
             <button type="button" role="tab" aria-selected={tab === "main"} className={tabClass(tab === "main")} onClick={() => setTab("main")}>
               To review ({batch.main.length})
@@ -270,7 +274,7 @@ export function BatchScanPage() {
             </button>
           </div>
 
-          <div className="mt-3 grid gap-3 lg:mt-0 lg:grid-cols-2">
+          <div className="mt-3 grid grid-cols-1 gap-3 lg:mt-0 lg:grid-cols-2">
             <section className={`rounded-3xl border border-slate-200 bg-white p-3 ${tab === "main" ? "" : "hidden lg:block"}`}>
               <h2 className="mb-2 px-2 text-xs font-bold uppercase tracking-widest text-slate-500">
                 To review ({batch.main.length})

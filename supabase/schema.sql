@@ -102,3 +102,47 @@ end $$;
 
 revoke all on function public.delete_my_account() from public, anon;
 grant execute on function public.delete_my_account() to authenticated;
+
+-- Administrators. Add one by hand (SQL editor), there is deliberately no way to become admin from the app:
+--   insert into public.admins (user_id) select id from auth.users where email = 'you@example.com' on conflict do nothing;
+create table if not exists public.admins (
+  user_id uuid primary key references auth.users (id) on delete cascade
+);
+alter table public.admins enable row level security;
+drop policy if exists "admins: read own" on public.admins;
+create policy "admins: read own" on public.admins for select to authenticated using (user_id = (select auth.uid()));
+revoke all on public.admins from anon, authenticated;
+grant select on public.admins to authenticated;
+
+create or replace function public.is_admin() returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.admins where user_id = (select auth.uid()))
+$$;
+revoke all on function public.is_admin() from public, anon;
+grant execute on function public.is_admin() to authenticated;
+
+-- Why a scanned ISBN could not be identified. Any user writes their own failures, only admins read or purge them.
+create table if not exists public.scan_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  user_email text not null default '',
+  isbn text not null,
+  kind text not null default 'Book',
+  reason text not null check (reason in ('not-found', 'error', 'invalid')),
+  trace jsonb not null default '[]'::jsonb,
+  user_agent text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists scan_logs_created_idx on public.scan_logs (created_at desc);
+alter table public.scan_logs enable row level security;
+
+drop policy if exists "scan_logs: insert own" on public.scan_logs;
+drop policy if exists "scan_logs: admin read" on public.scan_logs;
+drop policy if exists "scan_logs: admin delete" on public.scan_logs;
+create policy "scan_logs: insert own" on public.scan_logs for insert to authenticated
+  with check (user_id = (select auth.uid()));
+create policy "scan_logs: admin read" on public.scan_logs for select to authenticated using ((select public.is_admin()));
+create policy "scan_logs: admin delete" on public.scan_logs for delete to authenticated using ((select public.is_admin()));
+
+revoke all on public.scan_logs from anon;
+grant select, insert, delete on public.scan_logs to authenticated;
