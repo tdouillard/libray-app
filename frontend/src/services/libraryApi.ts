@@ -125,6 +125,14 @@ export const libraryApi = {
     await supabase.rest(`/books?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
   },
 
+  async addBooksToCollection(collectionId: string, bookIds: string[]): Promise<void> {
+    if (bookIds.length === 0) return;
+    await supabase.rest("/collection_books", {
+      method: "POST",
+      body: bookIds.map((book_id) => ({ collection_id: collectionId, book_id })),
+    });
+  },
+
   async createCollection(collection: Collection): Promise<void> {
     await supabase.rest("/collections", {
       method: "POST",
