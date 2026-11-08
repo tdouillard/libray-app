@@ -1,204 +1,137 @@
-# libray-app
+# Libray
 
-A book and BD (comic) collection management application with a modern web stack.
+A personal library manager for books, BD (comics) and manga. Track what you own, are reading, have lent out or want to buy, organise items into collections, and add whole shelves quickly by scanning barcodes or photographing a shelf.
+
+## Screenshots
+
+| Library | Collections |
+| --- | --- |
+| ![Library](docs/screenshots/library.jpg) | ![Collections](docs/screenshots/collections.jpg) |
+
+| Batch scan |
+| --- |
+| ![Batch scan](docs/screenshots/batch-scan.jpg) |
+
+> Captured with demo data. The camera area shows "No camera" because the capture machine had no webcam; the books were added with the ISBN field.
+
+## Features
+
+- **Library**: cover grid or list view, full-text search (title, author, tag, press `/` to focus), sorting, and filters by status (owned, reading, borrowed, wishlist) and kind (Book, BD, Manga). Detail modal with metadata refresh and cover lookup.
+- **Collections**: group items by theme, series, author or wishlist.
+- **Batch scan**: scan ISBN barcodes with the camera (`barcode-detector` / `zxing-wasm`), type an ISBN, or upload a **shelf photo**: spines are read in the browser with Tesseract.js and matched to ISBNs through Open Library. Scanned items land in a review list before being added.
+- **Accounts**: email/password sign-in, password reset, email change, avatar, language and account deletion.
+- **Admin tools**: scan failure log for diagnosing bad scans.
+- **i18n**: English, French and German.
+- **Dark theme** UI.
 
 ## Technology Stack
 
-- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
-- **Backend**: Express.js + TypeScript + Node.js
-- **Database**: PostgreSQL with Drizzle ORM
-- **Package Management**: npm workspaces
-- **Containerization**: Docker & Docker Compose
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, React Router, Radix UI
+- **Auth and data**: [Supabase](https://supabase.com) (email/password auth, Postgres with owner-only Row Level Security, storage for avatars). The frontend talks to Supabase directly through a small `fetch` client (`frontend/src/services/supabase.ts`).
+- **Tests**: Vitest and Testing Library
+- **Deployment**: GitHub Pages via GitHub Actions
+- **Legacy**: an Express + Drizzle backend and Docker Compose setup remain in the repo but are no longer used by the frontend (the backend still provides the `db:setup` script).
+- **Package management**: npm workspaces
 
-For detailed technology choices, see [docs/technology-decisions.md](docs/technology-decisions.md).
+More detail in [docs/technology-decisions.md](docs/technology-decisions.md).
 
 ## Project Structure
 
 ```
-project-root/
-├── frontend/          # React app (Vite)
-├── backend/           # Express.js API
-├── shared/            # Shared types and schemas
-├── database/          # Database migrations
-├── docker-compose.yml # Local development setup
-└── docs/              # Documentation
+libray-app/
+├── frontend/
+│   └── src/
+│       ├── pages/        # Books, Collections, Batch scan, Account, Login, Admin scan logs
+│       ├── components/   # Book cards/rows, detail modal, barcode scanner, profile menu...
+│       ├── services/     # Supabase client, library API, ISBN, covers, book lookup, shelf reader
+│       ├── auth/         # Auth context, language sync
+│       ├── i18n/         # en / fr / de dictionaries
+│       └── data/         # Mock data
+├── supabase/schema.sql   # Tables, Row Level Security, avatar storage policies
+├── backend/              # Legacy Express API + db:setup script that applies supabase/schema.sql
+├── shared/               # Shared types
+├── docs/                 # Documentation and screenshots
+├── mockups/              # Static HTML design mockups
+└── .github/workflows/    # deploy-pages.yml (frontend), db.yml (schema)
 ```
 
 ## Prerequisites
 
-- Node.js 20+ (LTS)
+- Node.js 20+
 - npm 10+
-- Docker & Docker Compose (optional, for containerized setup)
+- A Supabase project (free tier is enough)
 
 ## Quick Start
 
-### Local Development
-
-1. **Install dependencies**:
+1. **Install dependencies**
    ```bash
    npm install --workspaces
    ```
 
-2. **Set up environment variables**:
+2. **Configure Supabase**: copy the root template and fill it in.
    ```bash
-   cp backend/.env.example backend/.env
+   cp .env.example .env
    ```
+   | Variable | Used by | Purpose |
+   | --- | --- | --- |
+   | `SUPABASE_URL` | frontend | Project URL |
+   | `SUPABASE_PUBLISHABLE_KEY` | frontend | Publishable (anon) key |
+   | `SUPABASE_DB_PASSWORD` | `db:setup` only | Database password, never exposed to the browser |
+   | `SUPABASE_DB_HOST`, `SUPABASE_DB_PORT`, `SUPABASE_DB_USER` | `db:setup` (optional) | Pooler connection (`postgres.<project-ref>`) |
 
-3. **Start the database** (requires Docker):
+3. **Create the tables**
    ```bash
-   docker-compose up db -d
+   npm run db:setup -w backend
    ```
+   This applies `supabase/schema.sql` (safe to run repeatedly).
 
-4. **Run migrations**:
+4. **Create your account** in the Supabase dashboard (Authentication > Users > Add user). The app only offers sign-in, no sign-up.
+
+5. **Add redirect URLs** for password-reset and email-change links in Supabase (Authentication > URL Configuration), for example `http://localhost:5173/` and your GitHub Pages URL.
+
+6. **Run the app**
    ```bash
-   npm run db:migrate -w backend
-   ```
-
-5. **Start frontend and backend**:
-   ```bash
-   # Terminal 1: Backend
-   npm run dev -w backend
-
-   # Terminal 2: Frontend
    npm run dev -w frontend
    ```
+   Open http://localhost:5173.
 
-Frontend: http://localhost:5173
-Backend: http://localhost:3000
-
-### Docker Compose (Full Stack)
-
-```bash
-docker-compose up
-```
-
-Access:
-- Frontend: http://localhost
-- Backend API: http://localhost/api
-- Database: localhost:5432
+See [docs/environment.md](docs/environment.md) for details.
 
 ## Scripts
 
-### Available Commands
-
-**Root level** (run all workspaces):
 ```bash
-npm install --workspaces   # Install all dependencies
-npm run build --workspaces # Build all packages
-npm run test --workspaces  # Run all tests
-npm run lint --workspaces  # Run linters
+# Frontend
+npm run dev -w frontend       # Vite dev server
+npm run build -w frontend     # Type-check and production build
+npm run preview -w frontend   # Preview the production build
+npm run test -w frontend      # Vitest
+npm run lint -w frontend      # ESLint
+
+# Database
+npm run db:setup -w backend   # Apply supabase/schema.sql to your Supabase project
+
+# Root (all workspaces)
+npm run build
+npm run test
+npm run lint
 ```
 
-**Backend**:
-```bash
-npm run dev -w backend           # Development with watch mode
-npm run build -w backend         # Build backend
-npm run start -w backend         # Start production build
-npm run test -w backend          # Run tests
-npm run db:migrate -w backend    # Run database migrations
-npm run db:generate -w backend   # Generate migration files
-```
+## Data Model
 
-**Frontend**:
-```bash
-npm run dev -w frontend      # Development server
-npm run build -w frontend    # Production build
-npm run preview -w frontend  # Preview production build
-npm run lint -w frontend     # Run linter
-```
+All tables belong to the signed-in user and are protected by Row Level Security (see `supabase/schema.sql`).
 
-**Shared**:
-```bash
-npm run build -w shared # Build shared types package
-npm run dev -w shared   # Watch mode development
-```
+- **books**: `id`, `kind` (Book / BD / Manga), `isbn`, `title`, `author`, `year`, `status` (owned / wishlist / reading / borrowed), `description`, `tags`, `cover`, `rating`, `created_at`
+- **collections**: `id`, `name`, `description`, `accent`, `type` (Default / Series / Author / Theme / Wishlist), `created_at`
+- **collection_books**: link table between collections and books
 
-## API Endpoints
+## Deployment
 
-### Books
-- `GET /api/books` - Get all books
-- `POST /api/books` - Create a new book
-- `GET /api/books/:id` - Get a specific book
-- `PUT /api/books/:id` - Update a book
-- `DELETE /api/books/:id` - Delete a book
-
-### Collections
-- `GET /api/collections` - Get all collections
-- `POST /api/collections` - Create a new collection
-- `GET /api/collections/:id` - Get a specific collection
-- `PUT /api/collections/:id` - Update a collection
-- `DELETE /api/collections/:id` - Delete a collection
-- `POST /api/collections/:id/books` - Add book to collection
-- `DELETE /api/collections/:id/books/:bookId` - Remove book from collection
-
-## Database Schema
-
-### Books Table
-- `id` (UUID, primary key)
-- `isbn` (string, unique)
-- `title` (string)
-- `author` (string)
-- `publisher` (string, optional)
-- `publishedDate` (string, optional)
-- `description` (text, optional)
-- `imageUrl` (text, optional)
-- `pageCount` (integer, optional)
-- `categories` (string, optional)
-- `createdAt` (timestamp)
-- `updatedAt` (timestamp)
-
-### Collections Table
-- `id` (UUID, primary key)
-- `name` (string)
-- `description` (text, optional)
-- `createdAt` (timestamp)
-- `updatedAt` (timestamp)
-
-### Collection Books Table
-- `id` (UUID, primary key)
-- `collectionId` (UUID, foreign key)
-- `bookId` (UUID, foreign key)
-- `createdAt` (timestamp)
-
-## Development Workflow
-
-1. Make changes in `frontend/`, `backend/`, or `shared/`
-2. Frontend changes reload via Vite HMR
-3. Backend changes trigger tsx watch
-4. For database changes:
-   - Modify schema in `backend/src/db/schema.ts`
-   - Generate migration: `npm run db:generate -w backend`
-   - Apply migration: `npm run db:migrate -w backend`
-
-## Testing
-
-```bash
-npm run test --workspaces
-```
-
-## Building for Production
-
-```bash
-npm run build --workspaces
-docker-compose -f docker-compose.prod.yml up
-```
+The frontend deploys to GitHub Pages through `.github/workflows/deploy-pages.yml` on every push to `dev` (or manually via `workflow_dispatch`).
 
 ## Contributing
 
-See CONTRIBUTING.md for guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
 MIT
-
-## GitHub Pages Deployment
-
-The frontend can be deployed to GitHub Pages via GitHub Actions.
-
-- Workflow file: `.github/workflows/deploy-pages.yml`
-- Trigger: push to `dev` branch (or manual `workflow_dispatch`)
-- Published output: `frontend/dist`
-
-After enabling **Settings > Pages > Source: GitHub Actions**, the site URL will be:
-
-`https://tdouillard.github.io/libray-app/`
