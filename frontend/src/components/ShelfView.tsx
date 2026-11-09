@@ -206,8 +206,18 @@ export function ShelfView({ books, onSelectBook, checkedIds, animate = true }: S
   const entering = shown !== Infinity;
   let offset = 0;
 
+  /* Sections sit side by side as columns when there is room, otherwise they stack. */
+  const GAP = 20;
+  const MIN_COLUMN = 320;
+  const columns = Math.max(1, Math.min(groups.length, Math.floor((width + GAP) / (MIN_COLUMN + GAP))));
+  const columnWidth = (width - GAP * (columns - 1)) / columns;
+
   return (
-    <div ref={measureRef} className="space-y-5">
+    <div
+      ref={measureRef}
+      className="items-start"
+      style={{ display: "grid", gap: GAP, gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+    >
       {groups.map(({ kind, items }) => {
         const meta = KIND_META[kind];
         const start = offset;
@@ -217,7 +227,7 @@ export function ShelfView({ books, onSelectBook, checkedIds, animate = true }: S
           status,
           count: items.filter((item) => item.book.status === status).length,
         })).filter((entry) => entry.count > 0);
-        const rows = packRows(items, width - 40 - 20); // shelf padding + row padding
+        const rows = packRows(items, columnWidth - 40 - 20); // shelf padding + row padding
         let index = start;
 
         return (
