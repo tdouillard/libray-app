@@ -56,16 +56,16 @@ export interface SpineGeometry {
   height: number;
 }
 
-export const ROW_HEIGHT: Record<BookKind, number> = { Book: 140, BD: 142, Manga: 122 };
+export const ROW_HEIGHT: Record<BookKind, number> = { Book: 196, BD: 192, Manga: 172 };
 
 export function spineGeometry(book: Pick<Book, "id" | "kind">): SpineGeometry {
   switch (book.kind) {
     case "BD":
-      return { width: 19, height: 126 + Math.floor(hash01(book.id, 1) * 4) };
+      return { width: 19, height: 176 + Math.floor(hash01(book.id, 1) * 6) };
     case "Manga":
-      return { width: 18, height: 104 + Math.floor(hash01(book.id, 1) * 4) };
+      return { width: 18, height: 154 + Math.floor(hash01(book.id, 1) * 6) };
     default:
-      return { width: 19 + Math.floor(hash01(book.id, 2) * 7), height: 100 + Math.floor(hash01(book.id, 1) * 30) };
+      return { width: 19 + Math.floor(hash01(book.id, 2) * 7), height: 156 + Math.floor(hash01(book.id, 1) * 32) };
   }
 }
 
