@@ -11,6 +11,7 @@ import {
   spineGeometry,
 } from "../services/spines";
 import type { Hsl } from "../services/spines";
+import { buildLibrarySummary } from "../services/shelfExport";
 import { BOOK_KINDS } from "../types";
 import type { Book, BookKind } from "../types";
 import "./ShelfView.css";
@@ -163,6 +164,12 @@ export function ShelfView({ books, onSelectBook, checkedIds, animate = true }: S
   const [width, setWidth] = useState(1000);
   const [hover, setHover] = useState<{ book: Book; x: number; y: number } | null>(null);
   const measureRef = useRef<HTMLDivElement>(null);
+  const [exporting, setExporting] = useState(false);
+  const [notice, setNotice] = useState("");
+  const flash = (message: string) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice(""), 2500);
+  };
   const playIntro = useRef(animate && !prefersReducedMotion()).current;
 
   const groups = useMemo(
@@ -210,8 +217,59 @@ export function ShelfView({ books, onSelectBook, checkedIds, animate = true }: S
   const entering = shown !== Infinity;
   let offset = 0;
 
+  const exportPng = async () => {
+    const el = measureRef.current;
+    if (!el || exporting) return;
+    setExporting(true);
+    try {
+      const { toPng } = await import("html-to-image");
+      const dataUrl = await toPng(el, { pixelRatio: 2, backgroundColor: "#f1f5f9", cacheBust: true });
+      const link = document.createElement("a");
+      link.download = "library-shelves.png";
+      link.href = dataUrl;
+      link.click();
+      flash("PNG saved");
+    } catch {
+      flash("Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const copySummary = async () => {
+    try {
+      await navigator.clipboard.writeText(buildLibrarySummary(books));
+      flash("Summary copied");
+    } catch {
+      flash("Copy failed");
+    }
+  };
+
   return (
-    <div ref={measureRef} className="space-y-5">
+    <div>
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2 text-sm">
+        {notice && (
+          <span role="status" className="mr-1 text-slate-500">
+            {notice}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={copySummary}
+          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50"
+        >
+          📋 Copy summary
+        </button>
+        <button
+          type="button"
+          onClick={exportPng}
+          disabled={exporting}
+          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          🖼️ Export PNG
+        </button>
+      </div>
+      <div ref={measureRef} className="space-y-5">
       {groups.map(({ kind, items }) => {
         const meta = KIND_META[kind];
         const start = offset;
@@ -279,6 +337,7 @@ export function ShelfView({ books, onSelectBook, checkedIds, animate = true }: S
           </section>
         );
       })}
+      </div>
 
       {hover && (
         <div
