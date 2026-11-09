@@ -24,22 +24,23 @@
 
 .sv-spine em {
   font-style: normal; display: flex; align-items: center; justify-content: center; writing-mode: vertical-rl;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1; color: var(--sv-fg);
+  white-space: nowrap; overflow: hidden; line-height: 1; color: var(--sv-fg);
 }
+/* The span carries the ellipsis so a long title is cut at its end, keeping the first words readable. */
+.sv-spine em > span { display: block; max-height: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Book: solid cover colour, hairlines, clean bold title */
 .sv-Book .sv-ln { position: absolute; left: 3px; right: 3px; height: 1px; background: var(--sv-fg); opacity: 0.4; }
 .sv-Book .sv-ln.a { top: 8px; }
 .sv-Book .sv-ln.d { bottom: 8px; }
-.sv-Book em { position: absolute; left: 0; right: 0; top: 16px; bottom: 16px; font: 600 10px/1 Inter, system-ui, sans-serif; letter-spacing: 0.2px; }
+.sv-Book em { position: absolute; left: 0; right: 0; top: 16px; bottom: 16px; font: 600 11.5px/1 Inter, system-ui, sans-serif; letter-spacing: 0.2px; }
 
 /* BD: number on top, title reads bottom-to-top, tinted foot */
 .sv-BD .sv-num { position: absolute; top: 6px; left: 0; right: 0; text-align: center; color: #fff; font: 700 12px system-ui; }
 .sv-BD em {
   position: absolute; left: 0; right: 0; top: 26px; bottom: 26px; transform: rotate(180deg); justify-content: flex-end;
-  font: 600 7.5px "Arial Narrow", system-ui; text-transform: uppercase; letter-spacing: 0.5px; color: #f5f3ee;
+  font: 700 10.5px "Arial Narrow", system-ui; text-transform: uppercase; letter-spacing: 0.3px;
 }
-.sv-BD em small { font-weight: 400; opacity: 0.75; font-size: 6.5px; }
 .sv-BD .sv-foot { position: absolute; left: 0; right: 0; bottom: 0; height: 20px; background: linear-gradient(transparent, var(--sv-art)); }
 
 /* Manga: white/black tankōbon, colour band + round volume badge */
@@ -49,7 +50,7 @@
   position: absolute; top: 4px; left: 50%; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%;
   background: var(--sv-base); color: var(--sv-acc); display: grid; place-items: center; font: 700 8px system-ui;
 }
-.sv-Manga em { position: absolute; left: 0; right: 0; top: 26px; bottom: 18px; font: 800 9.5px "Arial Narrow", system-ui; text-transform: uppercase; letter-spacing: 0.4px; color: var(--sv-acc); }
+.sv-Manga em { position: absolute; left: 0; right: 0; top: 26px; bottom: 18px; font: 800 11px "Arial Narrow", system-ui; text-transform: uppercase; letter-spacing: 0.3px; color: var(--sv-acc); }
 .sv-Manga .sv-logo { position: absolute; bottom: 4px; left: 50%; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 2px; background: var(--sv-acc); opacity: 0.8; }
 
 /* hover popover */

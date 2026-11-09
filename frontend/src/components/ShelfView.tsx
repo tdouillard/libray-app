@@ -115,7 +115,9 @@ const Spine = memo(function Spine({ item, entering, selected, onSelect, onHover 
       {kind === "Book" && (
         <>
           <span className="sv-ln a" />
-          <em>{displayTitle(book)}</em>
+          <em>
+            <span>{displayTitle(book)}</span>
+          </em>
           <span className="sv-ln d" />
         </>
       )}
@@ -123,7 +125,7 @@ const Spine = memo(function Spine({ item, entering, selected, onSelect, onHover 
         <>
           <span className="sv-num">{num}</span>
           <em>
-            {series} <small>/ {book.author}</small>
+            <span>{series}</span>
           </em>
           <span className="sv-foot" />
         </>
@@ -132,7 +134,9 @@ const Spine = memo(function Spine({ item, entering, selected, onSelect, onHover 
         <>
           <span className="sv-band" />
           <span className="sv-num">{num}</span>
-          <em>{series}</em>
+          <em>
+            <span>{series}</span>
+          </em>
           <span className="sv-logo" />
         </>
       )}
